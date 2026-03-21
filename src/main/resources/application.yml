@@ -1,8 +1,23 @@
 spring:
   application:
     name: confluence-rag
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_CHAT_MODEL:llama3}
+          temperature: 0.3
+      embedding:
+        options:
+          model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+    vectorstore:
+      qdrant:
+        host: ${QDRANT_HOST:localhost}
+        port: ${QDRANT_GRPC_PORT:6334}
+        collection-name: confluence-chunks
+        initialize-schema: true
 
-# Platzhalter — werden in Issue #2 vollständig befüllt
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}
   pat: ${CONFLUENCE_PAT:}
@@ -14,3 +29,12 @@ confluence:
 
 server:
   port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
