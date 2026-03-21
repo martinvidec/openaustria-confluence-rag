@@ -1,0 +1,39 @@
+# Java
+target/
+*.class
+*.jar
+*.war
+
+# Maven
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Node (Frontend)
+frontend/node_modules/
+frontend/dist/
+
+# Application data
+data/
+*.log
+
+# Spring Boot
+src/main/resources/static/
+!src/main/resources/static/.gitkeep
