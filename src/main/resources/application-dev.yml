@@ -1,0 +1,4 @@
+logging:
+  level:
+    at.openaustria.confluencerag: DEBUG
+    org.springframework.ai: DEBUG
