@@ -8,19 +8,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Requires Java 17+ (Homebrew: /opt/homebrew/opt/openjdk@17)
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 
-mvn clean compile          # Compile
-mvn test                   # Run all tests
-mvn spring-boot:run        # Start app (requires Qdrant + Ollama running)
-mvn test -pl . -Dtest=ConfluenceClientTest    # Run single test class
+mvn clean compile                                    # Compile
+mvn test                                             # Run all tests (33 tests)
+mvn spring-boot:run -DskipTests                      # Start app (requires Qdrant + Ollama)
+mvn test -pl . -Dtest=ConfluenceClientTest            # Run single test class
+mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
 ```
 
-Infrastructure: `docker compose up -d` starts Qdrant (6333) and Ollama (11434).
+## Running Locally
+
+```bash
+# Infrastructure
+docker compose up -d qdrant ollama           # Or use native Ollama if installed
+
+# App with Basic Auth (local Confluence test)
+CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=ds,OP \
+  OLLAMA_CHAT_MODEL=mistral mvn spring-boot:run -DskipTests
+
+# Local Confluence test instance
+docker compose -f docker-compose.test.yml up -d      # Confluence 8.5 on port 8090
+```
 
 ## Architecture
 
 Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 
-1. **Crawler** (`crawler/`) — `ConfluenceClient` (PAT auth, pagination, retry) → `ConfluenceHtmlConverter` (Jsoup XML parser, MacroHandler strategy pattern for PlantUML etc.) → `AttachmentTextExtractor` (Tika) → `CrawlerService` orchestrates per-space crawl into `ConfluenceDocument` records.
+1. **Crawler** (`crawler/`) — `ConfluenceClient` (PAT or Basic auth, pagination, retry) → `ConfluenceHtmlConverter` (Jsoup XML parser, MacroHandler strategy pattern for PlantUML etc.) → `AttachmentTextExtractor` (Tika) → `CrawlerService` orchestrates per-space crawl into `ConfluenceDocument` records.
 
 2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 800 token/100 overlap) → `IngestionService` (batch upsert to Qdrant, 50/batch) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default).
 
@@ -33,8 +46,11 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 - Base package: `at.openaustria.confluencerag`
 - Spring AI 1.0.0 artifact names: `spring-ai-starter-model-ollama`, `spring-ai-starter-vector-store-qdrant` (not the old `spring-ai-*-spring-boot-starter` names)
 - Spring AI 1.0.0 API: `Document.getText()` (not `getContent()`), `SearchRequest.builder().query()` (not `SearchRequest.query()`)
+- Spring AI 1.0.0 model config: `spring.ai.ollama.chat.model` (not under `options`)
 - `ConfluenceHtmlConverter` uses Jsoup **XML parser** (`Parser.xmlParser()`) for `ac:structured-macro` namespace support
 - All Confluence response DTOs use `@JsonIgnoreProperties(ignoreUnknown = true)` and `@JsonProperty("_links")` for links
+- `ConfluenceVersion.by` is a nested `ConfluenceUser` object (not a String) — use `getAuthorName()` helper
+- Auth supports both PAT (`Authorization: Bearer`) and Basic Auth (`username:password`) — configured via `ConfluenceProperties`
 - Configuration via `ConfluenceProperties` record (`@ConfigurationProperties(prefix = "confluence")`)
 
 ## Language Note

@@ -4,7 +4,7 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 
 ## Features
 
-- **Confluence Crawler** — Extraktion via REST API mit PAT-Auth, inkl. PlantUML-Makros, Kommentare und PDF-Attachments
+- **Confluence Crawler** — Extraktion via REST API mit PAT- oder Basic-Auth, inkl. PlantUML-Makros, Kommentare und PDF-Attachments
 - **Inkrementeller Sync** — Nur geänderte Seiten werden erneut verarbeitet (CQL-basiert)
 - **RAG-Pipeline** — Chunking, Embedding und Similarity Search über Qdrant
 - **Chat-Interface** — Streaming-Antworten mit Quellenangaben und Space-Filter
@@ -15,20 +15,20 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 | Schicht | Technologie |
 |---|---|
 | Sprache | Java 17+ |
-| Framework | Spring Boot 3.x + Spring AI 1.0+ |
+| Framework | Spring Boot 3.4.3 + Spring AI 1.0.0 |
 | HTML-Parsing | Jsoup |
 | PDF-Extraktion | Apache Tika |
 | VectorStore | Qdrant |
-| LLM & Embedding | Ollama (llama3, nomic-embed-text) |
-| Frontend | React + Vite + TypeScript |
+| LLM & Embedding | Ollama (z.B. mistral + nomic-embed-text) |
+| Frontend | Vanilla HTML/CSS/JS (kein Node.js nötig) |
 | Infrastruktur | Docker Compose |
 
 ## Voraussetzungen
 
 - Java 17+
 - Docker + Docker Compose
-- Confluence On-Premise (5.5+) mit Personal Access Token (PAT)
-- GPU empfohlen (für Ollama)
+- Confluence On-Premise (5.5+) mit PAT oder Basic Auth
+- GPU empfohlen (für Ollama), CPU funktioniert auch
 
 ## Schnellstart
 
@@ -39,53 +39,67 @@ git clone https://github.com/martinvidec/openaustria-confluence-rag.git
 cd openaustria-confluence-rag
 ```
 
-### 2. Umgebungsvariablen setzen
+### 2. Infrastruktur starten
 
 ```bash
-cp .env.example .env
-# .env anpassen:
-#   CONFLUENCE_BASE_URL=https://confluence.example.com
-#   CONFLUENCE_PAT=dein-personal-access-token
-#   CONFLUENCE_SPACES=DEV,OPS,TEAM
+docker compose up -d qdrant ollama
 ```
 
-### 3. Infrastruktur starten
+### 3. Ollama-Modelle laden
 
 ```bash
-docker compose up -d
-```
-
-### 4. Ollama-Modelle laden
-
-```bash
+# Embedding-Modell (erforderlich)
 docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull llama3
+
+# Chat-Modell (eines davon)
+docker compose exec ollama ollama pull mistral        # 7B, empfohlen
+# oder: ollama pull llama3                            # 8B, braucht mehr RAM
 ```
 
-### 5. Anwendung starten
+Falls Ollama nativ installiert ist, können die Modelle auch direkt mit `ollama pull` geladen werden.
+
+### 4. Anwendung starten
 
 ```bash
-./mvnw spring-boot:run
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home  # macOS
+
+# Mit PAT (Confluence 7.9+):
+CONFLUENCE_PAT=dein-token CONFLUENCE_SPACES=DEV,OPS mvn spring-boot:run -DskipTests
+
+# Mit Basic Auth (ältere Versionen oder lokaler Test):
+CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=DEV,OPS mvn spring-boot:run -DskipTests
 ```
 
-### 6. Initialen Crawl starten
+### 5. Initialen Crawl starten
 
 ```bash
 curl -X POST http://localhost:8080/api/admin/ingest
 ```
 
-### 7. Chat-UI öffnen
+### 6. Chat-UI öffnen
 
 ```
 http://localhost:8080
 ```
+
+## Lokales Test-Setup (Confluence On-Premise)
+
+Für ein realistisches Testszenario kann Confluence 8.5 lokal per Docker gestartet werden:
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+```
+
+Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lizenz über my.atlassian.com).
 
 ## Konfiguration
 
 | Variable | Beschreibung | Default |
 |---|---|---|
 | `CONFLUENCE_BASE_URL` | Confluence Server URL | `http://localhost:8090` |
-| `CONFLUENCE_PAT` | Personal Access Token | — |
+| `CONFLUENCE_PAT` | Personal Access Token (Confluence 7.9+) | — |
+| `CONFLUENCE_USERNAME` | Basic Auth Username (Alternative zu PAT) | — |
+| `CONFLUENCE_PASSWORD` | Basic Auth Passwort | — |
 | `CONFLUENCE_SPACES` | Komma-separierte Space-Keys | — |
 | `OLLAMA_BASE_URL` | Ollama API URL | `http://localhost:11434` |
 | `OLLAMA_CHAT_MODEL` | Chat-Modell | `llama3` |
@@ -103,15 +117,16 @@ http://localhost:8080
 | `POST` | `/api/admin/ingest` | Vollständigen Crawl + Ingestion starten |
 | `POST` | `/api/admin/ingest/{spaceKey}` | Einzelnen Space ingesten |
 | `POST` | `/api/admin/sync` | Inkrementellen Sync starten |
+| `POST` | `/api/admin/sync/{spaceKey}` | Space-Sync |
 | `GET` | `/api/admin/sync/status` | Sync-Status pro Space |
-| `GET` | `/actuator/health` | Health Check |
+| `GET` | `/actuator/health` | Health Check (Qdrant, Ollama, Confluence) |
 
 ## Architektur
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌─────────┐
 │  Confluence   │────▶│  Crawler Service  │────▶│  Jsoup  │
-│  REST API     │     │  (PAT Auth,       │     │  + Tika │
+│  REST API     │     │  (PAT/Basic Auth, │     │  + Tika │
 └──────────────┘     │   Pagination)     │     └────┬────┘
                       └──────────────────┘          │
                                                      ▼
@@ -129,31 +144,37 @@ http://localhost:8080
                               ▼
                       ┌──────────────────┐
                       │   Chat Frontend   │
-                      │  (React + SSE)    │
+                      │  (HTML/JS + SSE)  │
                       └──────────────────┘
 ```
 
 ## Projektstruktur
 
 ```
+src/main/java/at/openaustria/confluencerag/
+├── config/          # ConfluenceProperties, Health Indicators, CORS
+├── crawler/         # CrawlerService, AttachmentTextExtractor
+│   ├── client/      # ConfluenceClient (REST API, Pagination, Retry)
+│   ├── converter/   # ConfluenceHtmlConverter, MacroHandlers (PlantUML etc.)
+│   └── model/       # DTOs (ConfluencePageResponse, ConfluenceDocument etc.)
+├── ingestion/       # ChunkingService, IngestionService, SyncService
+├── query/           # QueryService, DTOs (QueryRequest/Response, Source)
+└── web/             # ChatController, AdminController, GlobalExceptionHandler
+
+src/main/resources/
+├── application.yml
+├── application-dev.yml
+└── static/          # Chat-UI (index.html, CSS, JS)
+
 docs/
-├── Confluence_RAG_Konzept.md          # Konzeptdokument (Deutsch)
-├── MVP_Phasenplan.md                  # Phasenplan mit GitHub Issues
-└── specs/                             # Detaillierte Spezifikationen
-    ├── 01_projekt-setup-infrastruktur.md
-    ├── 02_confluence-api-client.md
-    ├── 03_html-konverter.md
-    ├── 04_kommentare-attachments.md
-    ├── 05_document-processing.md
-    ├── 06_inkrementeller-sync.md
-    ├── 07_rag-query-service.md
-    ├── 08_chat-frontend.md
-    └── 09_integration-deployment.md
+├── Confluence_RAG_Konzept.md
+├── MVP_Phasenplan.md
+└── specs/           # 9 Implementierungsspezifikationen
 ```
 
 ## Status
 
-🚧 **In Entwicklung** — Konzept- und Spezifikationsphase abgeschlossen. Implementierung folgt gemäß [Phasenplan](docs/MVP_Phasenplan.md).
+MVP implementiert und funktionsfähig. Getestet mit Confluence 8.5 Data Center (Docker).
 
 ## Lizenz
 
