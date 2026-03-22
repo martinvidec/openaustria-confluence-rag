@@ -26,14 +26,6 @@ Thumbs.db
 # Environment
 .env
 
-# Node (Frontend)
-frontend/node_modules/
-frontend/dist/
-
 # Application data
 data/
 *.log
-
-# Spring Boot
-src/main/resources/static/
-!src/main/resources/static/.gitkeep

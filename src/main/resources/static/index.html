@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confluence RAG Chat</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>Confluence RAG Chat</h1>
+            <div id="space-filter" class="space-filter"></div>
+        </header>
+
+        <main id="message-list" class="message-list"></main>
+
+        <footer class="chat-input-area">
+            <form id="chat-form" class="chat-form">
+                <input
+                    type="text"
+                    id="chat-input"
+                    class="chat-input"
+                    placeholder="Stelle eine Frage zur Confluence-Dokumentation..."
+                    autocomplete="off"
+                >
+                <button type="submit" id="send-btn" class="send-btn">Senden</button>
+            </form>
+        </footer>
+    </div>
+
+    <script src="/js/marked.min.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
