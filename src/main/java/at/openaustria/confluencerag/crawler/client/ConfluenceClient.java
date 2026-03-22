@@ -217,6 +217,12 @@ public class ConfluenceClient {
 
         if (properties.pat() != null && !properties.pat().isBlank()) {
             builder.header("Authorization", "Bearer " + properties.pat());
+        } else if (properties.username() != null && !properties.username().isBlank()) {
+            String credentials = properties.username() + ":" +
+                    (properties.password() != null ? properties.password() : "");
+            String encoded = java.util.Base64.getEncoder().encodeToString(
+                    credentials.getBytes(StandardCharsets.UTF_8));
+            builder.header("Authorization", "Basic " + encoded);
         }
 
         return builder.build();

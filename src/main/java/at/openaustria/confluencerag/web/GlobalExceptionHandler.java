@@ -29,6 +29,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleGeneral(Exception e) {
         log.error("Unerwarteter Fehler", e);
         return ResponseEntity.status(500).body(
-                new ErrorResponse("INTERNAL_ERROR", "Ein interner Fehler ist aufgetreten"));
+                new ErrorResponse("INTERNAL_ERROR", e.getClass().getSimpleName() + ": " + e.getMessage()));
     }
 }

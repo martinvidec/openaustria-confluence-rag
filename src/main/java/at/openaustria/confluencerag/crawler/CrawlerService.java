@@ -136,7 +136,7 @@ public class CrawlerService {
         String author = "";
         Instant lastModified = null;
         if (page.version() != null) {
-            author = page.version().by() != null ? page.version().by() : "";
+            author = page.version().getAuthorName();
             lastModified = page.version().when();
         }
 
@@ -167,7 +167,7 @@ public class CrawlerService {
                         String author = "";
                         Instant when = null;
                         if (comment.version() != null) {
-                            author = comment.version().by() != null ? comment.version().by() : "";
+                            author = comment.version().getAuthorName();
                             when = comment.version().when();
                         }
                         return new CommentDocument(comment.id(), text, author, when);

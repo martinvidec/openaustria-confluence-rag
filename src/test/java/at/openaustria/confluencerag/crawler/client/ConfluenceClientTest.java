@@ -35,7 +35,7 @@ class ConfluenceClientTest {
         baseUrl = "http://localhost:" + port;
 
         ConfluenceProperties props = new ConfluenceProperties(
-                baseUrl, "test-pat", List.of("DEV"), null);
+                baseUrl, "test-pat", null, null, List.of("DEV"), null);
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();

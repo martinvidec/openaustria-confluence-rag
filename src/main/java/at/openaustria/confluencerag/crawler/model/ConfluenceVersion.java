@@ -8,5 +8,15 @@ import java.time.Instant;
 public record ConfluenceVersion(
     int number,
     Instant when,
-    String by
-) {}
+    ConfluenceUser by
+) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ConfluenceUser(
+        String displayName,
+        String type
+    ) {}
+
+    public String getAuthorName() {
+        return by != null && by.displayName() != null ? by.displayName() : "";
+    }
+}

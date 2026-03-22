@@ -8,6 +8,8 @@ import java.util.List;
 public record ConfluenceProperties(
     String baseUrl,
     String pat,
+    String username,
+    String password,
     List<String> spaces,
     SyncProperties sync
 ) {

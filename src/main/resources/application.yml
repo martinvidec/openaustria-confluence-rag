@@ -5,12 +5,11 @@ spring:
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
+        model: ${OLLAMA_CHAT_MODEL:llama3}
         options:
-          model: ${OLLAMA_CHAT_MODEL:llama3}
           temperature: 0.3
       embedding:
-        options:
-          model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+        model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
     vectorstore:
       qdrant:
         host: ${QDRANT_HOST:localhost}
@@ -21,6 +20,8 @@ spring:
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}
   pat: ${CONFLUENCE_PAT:}
+  username: ${CONFLUENCE_USERNAME:}
+  password: ${CONFLUENCE_PASSWORD:}
   spaces: ${CONFLUENCE_SPACES:}
   sync:
     cron: "0 */30 * * * *"
