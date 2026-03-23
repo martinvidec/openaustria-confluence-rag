@@ -14,12 +14,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.*;
 
 @Service
 public class IngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
+    private static final int CHUNK_TIMEOUT_SECONDS = 120;
     private final int batchSize;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final CrawlerService crawlerService;
     private final ChunkingService chunkingService;
     private final VectorStore vectorStore;
@@ -108,10 +111,14 @@ public class IngestionService {
         for (int i = 0; i < chunks.size(); i += batchSize) {
             List<Document> batch = chunks.subList(i, Math.min(i + batchSize, chunks.size()));
             try {
-                vectorStore.add(batch);
+                addWithTimeout(batch);
                 stored += batch.size();
-                log.debug("Batch gespeichert: {}/{} Chunks",
+                log.info("Batch gespeichert: {}/{} Chunks",
                         Math.min(i + batchSize, chunks.size()), chunks.size());
+            } catch (TimeoutException e) {
+                log.warn("Batch {}-{} Timeout ({}s), versuche einzeln",
+                        i, Math.min(i + batchSize, chunks.size()), CHUNK_TIMEOUT_SECONDS);
+                stored += storeIndividually(batch);
             } catch (Exception e) {
                 log.warn("Batch {}-{} fehlgeschlagen, versuche einzeln: {}",
                         i, Math.min(i + batchSize, chunks.size()), e.getMessage());
@@ -125,15 +132,32 @@ public class IngestionService {
         int stored = 0;
         for (Document chunk : chunks) {
             try {
-                vectorStore.add(List.of(chunk));
+                addWithTimeout(List.of(chunk));
                 stored++;
+            } catch (TimeoutException e) {
+                log.error("Chunk Timeout ({}s, {} Zeichen, Seite: '{}')",
+                        CHUNK_TIMEOUT_SECONDS,
+                        chunk.getText().length(),
+                        chunk.getMetadata().getOrDefault("pageTitle", "?"));
             } catch (Exception e) {
-                log.error("Chunk übersprungen ({}  Zeichen, Seite: '{}'): {}",
+                log.error("Chunk übersprungen ({} Zeichen, Seite: '{}'): {}",
                         chunk.getText().length(),
                         chunk.getMetadata().getOrDefault("pageTitle", "?"),
                         e.getMessage());
             }
         }
         return stored;
+    }
+
+    private void addWithTimeout(List<Document> docs) throws TimeoutException, Exception {
+        Future<?> future = executor.submit(() -> vectorStore.add(docs));
+        try {
+            future.get(CHUNK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw e;
+        } catch (ExecutionException e) {
+            throw (Exception) e.getCause();
+        }
     }
 }
