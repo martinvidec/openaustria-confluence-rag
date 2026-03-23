@@ -1,5 +1,6 @@
 package at.openaustria.confluencerag.ingestion;
 
+import at.openaustria.confluencerag.config.IngestionProperties;
 import at.openaustria.confluencerag.crawler.model.AttachmentDocument;
 import at.openaustria.confluencerag.crawler.model.CommentDocument;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
@@ -36,7 +37,7 @@ class ChunkingServiceTest {
 
     @BeforeEach
     void setUp() {
-        chunkingService = new ChunkingService();
+        chunkingService = new ChunkingService(new IngestionProperties(500, 50, 20));
     }
 
     @Test

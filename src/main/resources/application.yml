@@ -17,6 +17,11 @@ spring:
         collection-name: confluence-chunks
         initialize-schema: true
 
+ingestion:
+  chunk-size: ${CHUNK_SIZE:500}
+  chunk-overlap: ${CHUNK_OVERLAP:50}
+  batch-size: ${BATCH_SIZE:20}
+
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}
   pat: ${CONFLUENCE_PAT:}

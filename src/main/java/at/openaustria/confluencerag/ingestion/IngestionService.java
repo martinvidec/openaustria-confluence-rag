@@ -1,6 +1,7 @@
 package at.openaustria.confluencerag.ingestion;
 
 import at.openaustria.confluencerag.config.ConfluenceProperties;
+import at.openaustria.confluencerag.config.IngestionProperties;
 import at.openaustria.confluencerag.crawler.CrawlerService;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
 import org.slf4j.Logger;
@@ -18,8 +19,7 @@ import java.util.List;
 public class IngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
-    private static final int BATCH_SIZE = 50;
-
+    private final int batchSize;
     private final CrawlerService crawlerService;
     private final ChunkingService chunkingService;
     private final VectorStore vectorStore;
@@ -28,11 +28,13 @@ public class IngestionService {
     public IngestionService(CrawlerService crawlerService,
                             ChunkingService chunkingService,
                             VectorStore vectorStore,
-                            ConfluenceProperties properties) {
+                            ConfluenceProperties properties,
+                            IngestionProperties ingestionProperties) {
         this.crawlerService = crawlerService;
         this.chunkingService = chunkingService;
         this.vectorStore = vectorStore;
         this.properties = properties;
+        this.batchSize = ingestionProperties.batchSize();
     }
 
     public IngestionResult ingestAll() {
@@ -103,16 +105,16 @@ public class IngestionService {
 
     private int storeBatched(List<Document> chunks) {
         int stored = 0;
-        for (int i = 0; i < chunks.size(); i += BATCH_SIZE) {
-            List<Document> batch = chunks.subList(i, Math.min(i + BATCH_SIZE, chunks.size()));
+        for (int i = 0; i < chunks.size(); i += batchSize) {
+            List<Document> batch = chunks.subList(i, Math.min(i + batchSize, chunks.size()));
             try {
                 vectorStore.add(batch);
                 stored += batch.size();
                 log.debug("Batch gespeichert: {}/{} Chunks",
-                        Math.min(i + BATCH_SIZE, chunks.size()), chunks.size());
+                        Math.min(i + batchSize, chunks.size()), chunks.size());
             } catch (Exception e) {
                 log.error("Batch-Upsert fehlgeschlagen (Chunks {}-{}): {}",
-                        i, Math.min(i + BATCH_SIZE, chunks.size()), e.getMessage());
+                        i, Math.min(i + batchSize, chunks.size()), e.getMessage());
             }
         }
         return stored;

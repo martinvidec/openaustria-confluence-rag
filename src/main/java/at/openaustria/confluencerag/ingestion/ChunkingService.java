@@ -1,5 +1,6 @@
 package at.openaustria.confluencerag.ingestion;
 
+import at.openaustria.confluencerag.config.IngestionProperties;
 import at.openaustria.confluencerag.crawler.model.AttachmentDocument;
 import at.openaustria.confluencerag.crawler.model.CommentDocument;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
@@ -20,13 +21,16 @@ public class ChunkingService {
     private static final Logger log = LoggerFactory.getLogger(ChunkingService.class);
     private final TokenTextSplitter textSplitter;
 
-    public ChunkingService() {
+    public ChunkingService(IngestionProperties properties) {
+        int chunkSize = properties.chunkSize();
+        log.info("ChunkingService initialisiert: chunkSize={}, chunkOverlap={}",
+                chunkSize, properties.chunkOverlap());
         this.textSplitter = new TokenTextSplitter(
-                800,    // defaultChunkSize
-                100,    // minChunkSizeChars
-                50,     // minChunkLengthToEmbed
-                200,    // maxNumChunks
-                true    // keepSeparator
+                chunkSize,                    // defaultChunkSize (tokens)
+                properties.chunkOverlap(),    // minChunkSizeChars
+                50,                           // minChunkLengthToEmbed
+                200,                          // maxNumChunks
+                true                          // keepSeparator
         );
     }
 
