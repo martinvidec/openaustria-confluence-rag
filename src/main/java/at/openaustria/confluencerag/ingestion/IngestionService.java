@@ -113,8 +113,25 @@ public class IngestionService {
                 log.debug("Batch gespeichert: {}/{} Chunks",
                         Math.min(i + batchSize, chunks.size()), chunks.size());
             } catch (Exception e) {
-                log.error("Batch-Upsert fehlgeschlagen (Chunks {}-{}): {}",
+                log.warn("Batch {}-{} fehlgeschlagen, versuche einzeln: {}",
                         i, Math.min(i + batchSize, chunks.size()), e.getMessage());
+                stored += storeIndividually(batch);
+            }
+        }
+        return stored;
+    }
+
+    private int storeIndividually(List<Document> chunks) {
+        int stored = 0;
+        for (Document chunk : chunks) {
+            try {
+                vectorStore.add(List.of(chunk));
+                stored++;
+            } catch (Exception e) {
+                log.error("Chunk übersprungen ({}  Zeichen, Seite: '{}'): {}",
+                        chunk.getText().length(),
+                        chunk.getMetadata().getOrDefault("pageTitle", "?"),
+                        e.getMessage());
             }
         }
         return stored;

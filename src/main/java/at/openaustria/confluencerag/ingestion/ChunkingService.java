@@ -19,17 +19,19 @@ import java.util.Map;
 public class ChunkingService {
 
     private static final Logger log = LoggerFactory.getLogger(ChunkingService.class);
+    private static final int MAX_CHUNK_CHARS = 2000;
+
     private final TokenTextSplitter textSplitter;
 
     public ChunkingService(IngestionProperties properties) {
         int chunkSize = properties.chunkSize();
-        log.info("ChunkingService initialisiert: chunkSize={}, chunkOverlap={}",
-                chunkSize, properties.chunkOverlap());
+        log.info("ChunkingService initialisiert: chunkSize={}, maxChunkChars={}",
+                chunkSize, MAX_CHUNK_CHARS);
         this.textSplitter = new TokenTextSplitter(
                 chunkSize,                    // defaultChunkSize (tokens)
-                properties.chunkOverlap(),    // minChunkSizeChars
+                50,                           // minChunkSizeChars
                 50,                           // minChunkLengthToEmbed
-                200,                          // maxNumChunks
+                500,                          // maxNumChunks
                 true                          // keepSeparator
         );
     }
@@ -77,13 +79,21 @@ public class ChunkingService {
         Document sourceDoc = new Document(text);
         List<Document> split = textSplitter.apply(List.of(sourceDoc));
 
-        return split.stream()
-                .map(chunk -> {
-                    Map<String, Object> metadata = new HashMap<>(baseMetadata);
-                    metadata.put("chunkType", chunkType);
-                    return new Document(chunk.getText(), metadata);
-                })
-                .toList();
+        List<Document> result = new ArrayList<>();
+        for (Document chunk : split) {
+            String chunkText = chunk.getText();
+            // Hard limit: truncate chunks that are still too large
+            if (chunkText.length() > MAX_CHUNK_CHARS) {
+                log.warn("Chunk gekürzt: {} → {} Zeichen (Seite: {})",
+                        chunkText.length(), MAX_CHUNK_CHARS,
+                        baseMetadata.get("pageTitle"));
+                chunkText = chunkText.substring(0, MAX_CHUNK_CHARS);
+            }
+            Map<String, Object> metadata = new HashMap<>(baseMetadata);
+            metadata.put("chunkType", chunkType);
+            result.add(new Document(chunkText, metadata));
+        }
+        return result;
     }
 
     private Map<String, Object> buildBaseMetadata(ConfluenceDocument doc) {
