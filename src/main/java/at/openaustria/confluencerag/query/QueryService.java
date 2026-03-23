@@ -29,7 +29,7 @@ public class QueryService {
             Regeln:
             - Beantworte die Frage NUR basierend auf dem bereitgestellten Kontext.
             - Wenn der Kontext die Frage nicht beantwortet, sage das ehrlich.
-            - Nenne am Ende deiner Antwort die relevanten Quellen mit Seitentitel.
+            - Nenne KEINE Quellen in deiner Antwort. Die Quellen werden automatisch angezeigt.
             - Antworte in der Sprache der Frage.
             - Fasse den relevanten Kontext zusammen, zitiere nicht wörtlich.
 

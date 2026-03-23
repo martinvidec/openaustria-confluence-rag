@@ -368,6 +368,7 @@ function renderSources(messageEl, sources) {
         <ul>
             ${sources.map(s => `
                 <li>
+                    <span class="source-icon">\u2197</span>
                     <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">
                         ${escapeHtml(s.title)}
                     </a>
