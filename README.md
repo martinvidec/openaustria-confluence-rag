@@ -26,9 +26,112 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 ## Voraussetzungen
 
 - Java 17+
+- Maven 3.8+
 - Docker + Docker Compose
 - Confluence On-Premise (5.5+) mit PAT oder Basic Auth
 - GPU empfohlen (für Ollama), CPU funktioniert auch
+- Mind. 8 GB RAM (16 GB empfohlen für größere LLM-Modelle)
+
+## Installation
+
+### macOS
+
+```bash
+# Java 17
+brew install openjdk@17
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+
+# Maven
+brew install maven
+
+# Docker Desktop
+# Download: https://www.docker.com/products/docker-desktop/
+# Oder: brew install --cask docker
+
+# Ollama (optional, alternativ via Docker)
+brew install ollama
+```
+
+Nach der Installation `JAVA_HOME` dauerhaft setzen:
+
+```bash
+echo 'export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Linux (Ubuntu/Debian)
+
+```bash
+# Java 17
+sudo apt update
+sudo apt install openjdk-17-jdk
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# Maven
+sudo apt install maven
+
+# Docker
+sudo apt install docker.io docker-compose-v2
+sudo usermod -aG docker $USER
+# Danach neu einloggen damit die Gruppenänderung greift
+
+# Ollama (optional, alternativ via Docker)
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Nach der Installation `JAVA_HOME` dauerhaft setzen:
+
+```bash
+echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Windows
+
+```powershell
+# Java 17 — Download und Installation:
+# https://adoptium.net/de/temurin/releases/?version=17
+# Oder via winget:
+winget install EclipseAdoptium.Temurin.17.JDK
+
+# Maven — Download und PATH setzen:
+# https://maven.apache.org/download.cgi
+# Oder via winget:
+winget install Apache.Maven
+
+# Docker Desktop:
+# https://www.docker.com/products/docker-desktop/
+winget install Docker.DockerDesktop
+
+# Ollama (optional, alternativ via Docker):
+# https://ollama.com/download/windows
+winget install Ollama.Ollama
+```
+
+`JAVA_HOME` setzen (Systemumgebungsvariablen):
+
+```powershell
+setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
+# Pfad anpassen je nach installierter Version
+```
+
+**Hinweis Windows:** Umgebungsvariablen werden unter Windows anders übergeben. Statt Inline-Variablen eine `.env`-Datei nutzen oder die Variablen vorher setzen:
+
+```powershell
+$env:CONFLUENCE_USERNAME="admin"
+$env:CONFLUENCE_PASSWORD="admin"
+$env:CONFLUENCE_SPACES="DEV,OPS"
+mvn spring-boot:run -DskipTests
+```
+
+### Installation verifizieren
+
+```bash
+java -version          # Sollte 17.x.x zeigen
+mvn -version           # Sollte 3.8+ zeigen
+docker --version       # Sollte 20+ zeigen
+docker compose version # Sollte 2.x zeigen
+```
 
 ## Schnellstart
 
@@ -47,22 +150,25 @@ docker compose up -d qdrant ollama
 
 ### 3. Ollama-Modelle laden
 
-```bash
-# Embedding-Modell (erforderlich)
-docker compose exec ollama ollama pull nomic-embed-text
+Via Docker:
 
-# Chat-Modell (eines davon)
-docker compose exec ollama ollama pull mistral        # 7B, empfohlen
-# oder: ollama pull llama3                            # 8B, braucht mehr RAM
+```bash
+docker compose exec ollama ollama pull nomic-embed-text    # Embedding (erforderlich)
+docker compose exec ollama ollama pull mistral              # Chat, 7B, empfohlen
 ```
 
-Falls Ollama nativ installiert ist, können die Modelle auch direkt mit `ollama pull` geladen werden.
+Oder falls Ollama nativ installiert ist:
+
+```bash
+ollama pull nomic-embed-text
+ollama pull mistral
+```
 
 ### 4. Anwendung starten
 
-```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home  # macOS
+**macOS / Linux:**
 
+```bash
 # Mit PAT (Confluence 7.9+):
 CONFLUENCE_PAT=dein-token CONFLUENCE_SPACES=DEV,OPS mvn spring-boot:run -DskipTests
 
@@ -70,10 +176,25 @@ CONFLUENCE_PAT=dein-token CONFLUENCE_SPACES=DEV,OPS mvn spring-boot:run -DskipTe
 CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=DEV,OPS mvn spring-boot:run -DskipTests
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+$env:CONFLUENCE_USERNAME="admin"
+$env:CONFLUENCE_PASSWORD="admin"
+$env:CONFLUENCE_SPACES="DEV,OPS"
+mvn spring-boot:run -DskipTests
+```
+
 ### 5. Initialen Crawl starten
 
 ```bash
 curl -X POST http://localhost:8080/api/admin/ingest
+```
+
+Unter Windows ohne curl: http://localhost:8080/api/admin/ingest im Browser als POST senden (z.B. mit Postman) oder PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/admin/ingest
 ```
 
 ### 6. Chat-UI öffnen
