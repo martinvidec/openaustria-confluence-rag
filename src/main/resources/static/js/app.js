@@ -310,38 +310,47 @@ async function streamChat(question, contentEl, assistantEl) {
     let sources = [];
     let currentEvent = '';
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-            if (line.startsWith('event:')) {
-                currentEvent = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-                const dataStr = line.slice(5).trim();
-                if (!dataStr) continue;
-
-                try {
-                    const data = JSON.parse(dataStr);
-
-                    if (currentEvent === 'token' && data.token) {
-                        fullText += data.token;
-                        renderMarkdown(contentEl, fullText);
-                    } else if (currentEvent === 'sources' && data.sources) {
-                        sources = data.sources;
-                    }
-                } catch (parseErr) {
-                    // Ignore parse errors for partial data
+    function handleLine(line) {
+        if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+            const dataStr = line.slice(5).trim();
+            if (!dataStr) return;
+            try {
+                const data = JSON.parse(dataStr);
+                if (currentEvent === 'token' && data.token) {
+                    fullText += data.token;
+                    renderMarkdown(contentEl, fullText);
+                } else if (currentEvent === 'sources' && data.sources) {
+                    sources = data.sources;
                 }
+            } catch (parseErr) {
+                // Ignore parse errors for partial data
             }
         }
     }
 
-    renderMarkdown(contentEl, fullText);
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            if (buffer.trim()) {
+                buffer.split('\n').forEach(handleLine);
+            }
+            break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(handleLine);
+    }
+
+    // Final render without cursor
+    if (typeof marked !== 'undefined') {
+        contentEl.innerHTML = marked.parse(fullText);
+    } else {
+        contentEl.innerHTML = escapeHtml(fullText);
+    }
 
     if (sources.length > 0) {
         renderSources(assistantEl, sources);
