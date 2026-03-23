@@ -10,8 +10,24 @@
     <div class="app">
         <header class="header">
             <h1>Confluence RAG Chat</h1>
-            <div id="space-filter" class="space-filter"></div>
+            <div class="header-actions">
+                <div id="space-filter" class="space-filter"></div>
+                <button id="sync-btn" class="sync-btn" title="Confluence-Daten synchronisieren">Sync</button>
+                <button id="admin-toggle" class="admin-toggle-btn" title="Admin-Panel">&#9881;</button>
+            </div>
         </header>
+
+        <div id="admin-panel" class="admin-panel hidden">
+            <div class="admin-header">
+                <span>Admin</span>
+                <button id="admin-close" class="admin-close-btn">&#10005;</button>
+            </div>
+            <div id="admin-spaces" class="admin-spaces"></div>
+            <div class="admin-global-actions">
+                <button id="sync-all-btn" class="admin-btn">Alle Spaces syncen</button>
+                <button id="ingest-all-btn" class="admin-btn danger-btn">Alle Spaces neu ingesten</button>
+            </div>
+        </div>
 
         <main id="message-list" class="message-list"></main>
 
@@ -28,6 +44,8 @@
             </form>
         </footer>
     </div>
+
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="/js/marked.min.js"></script>
     <script src="/js/app.js"></script>

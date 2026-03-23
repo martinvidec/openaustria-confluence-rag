@@ -1,25 +1,43 @@
 const API_BASE = '/api';
 
 let selectedSpaces = [];
+let allSpaces = [];
 let isLoading = false;
+let isSyncing = false;
 
 const messageList = document.getElementById('message-list');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const spaceFilterContainer = document.getElementById('space-filter');
+const syncBtn = document.getElementById('sync-btn');
+const adminToggle = document.getElementById('admin-toggle');
+const adminPanel = document.getElementById('admin-panel');
+const adminClose = document.getElementById('admin-close');
+const adminSpaces = document.getElementById('admin-spaces');
+const syncAllBtn = document.getElementById('sync-all-btn');
+const ingestAllBtn = document.getElementById('ingest-all-btn');
 
-// Initialize
+// ==================== Init ====================
+
 document.addEventListener('DOMContentLoaded', () => {
     loadSpaces();
+    loadSyncStatus();
     chatForm.addEventListener('submit', handleSubmit);
+    syncBtn.addEventListener('click', () => triggerSync());
+    adminToggle.addEventListener('click', toggleAdminPanel);
+    adminClose.addEventListener('click', () => adminPanel.classList.add('hidden'));
+    syncAllBtn.addEventListener('click', () => triggerSync());
+    ingestAllBtn.addEventListener('click', () => triggerIngest());
 });
+
+// ==================== Spaces ====================
 
 async function loadSpaces() {
     try {
         const res = await fetch(`${API_BASE}/spaces`);
-        const spaces = await res.json();
-        renderSpaceFilter(spaces);
+        allSpaces = await res.json();
+        renderSpaceFilter(allSpaces);
     } catch (e) {
         console.error('Spaces konnten nicht geladen werden:', e);
     }
@@ -63,13 +81,187 @@ function updateFilterButtons() {
     const buttons = spaceFilterContainer.querySelectorAll('.space-filter-btn');
     buttons.forEach(btn => {
         if (!btn.dataset.key) {
-            // "Alle" button
             btn.classList.toggle('active', selectedSpaces.length === 0);
         } else {
             btn.classList.toggle('active', selectedSpaces.includes(btn.dataset.key));
         }
     });
 }
+
+// ==================== Admin Panel ====================
+
+function toggleAdminPanel() {
+    adminPanel.classList.toggle('hidden');
+    if (!adminPanel.classList.contains('hidden')) {
+        loadSyncStatus();
+    }
+}
+
+async function loadSyncStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/admin/sync/status`);
+        const statusMap = await res.json();
+        renderAdminSpaces(statusMap);
+    } catch (e) {
+        console.error('Sync-Status konnte nicht geladen werden:', e);
+    }
+}
+
+function renderAdminSpaces(statusMap) {
+    adminSpaces.innerHTML = '';
+
+    if (allSpaces.length === 0) {
+        adminSpaces.innerHTML = '<div class="admin-empty">Keine Spaces konfiguriert</div>';
+        return;
+    }
+
+    allSpaces.forEach(space => {
+        const state = statusMap[space.key];
+        const lastSync = state && state.lastSync
+            ? new Date(state.lastSync).toLocaleString('de-AT')
+            : 'Noch nie';
+        const pageCount = state && state.knownPageIds
+            ? state.knownPageIds.length
+            : 0;
+
+        const div = document.createElement('div');
+        div.className = 'admin-space-row';
+        div.innerHTML = `
+            <div class="admin-space-info">
+                <span class="admin-space-key">${escapeHtml(space.key)}</span>
+                <span class="admin-space-detail">Letzter Sync: ${escapeHtml(lastSync)}</span>
+                <span class="admin-space-detail">${pageCount} Seiten indexiert</span>
+            </div>
+            <div class="admin-space-actions">
+                <button class="admin-btn admin-btn-sm" data-action="sync" data-space="${escapeHtml(space.key)}">Sync</button>
+                <button class="admin-btn admin-btn-sm danger-btn" data-action="ingest" data-space="${escapeHtml(space.key)}">Voll-Ingest</button>
+            </div>
+        `;
+        adminSpaces.appendChild(div);
+    });
+
+    adminSpaces.querySelectorAll('[data-action="sync"]').forEach(btn => {
+        btn.addEventListener('click', () => triggerSpaceSync(btn.dataset.space));
+    });
+    adminSpaces.querySelectorAll('[data-action="ingest"]').forEach(btn => {
+        btn.addEventListener('click', () => triggerSpaceIngest(btn.dataset.space));
+    });
+}
+
+// ==================== Sync & Ingest ====================
+
+async function triggerSync() {
+    if (isSyncing) return;
+    setSyncing(true);
+    try {
+        const res = await fetch(`${API_BASE}/admin/sync`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(`Sync abgeschlossen: ${result.pagesUpdated} aktualisiert, ${result.pagesDeleted} gelöscht, ${result.chunksCreated} Chunks (${formatDuration(result.duration)})`, 'success');
+        } else {
+            showToast(`Sync fehlgeschlagen: ${result.message || 'Unbekannter Fehler'}`, 'error');
+        }
+    } catch (e) {
+        showToast('Sync fehlgeschlagen: ' + e.message, 'error');
+    } finally {
+        setSyncing(false);
+        loadSyncStatus();
+    }
+}
+
+async function triggerSpaceSync(spaceKey) {
+    if (isSyncing) return;
+    setSyncing(true);
+    try {
+        const res = await fetch(`${API_BASE}/admin/sync/${spaceKey}`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(`Space ${spaceKey}: ${result.pagesUpdated} aktualisiert, ${result.pagesDeleted} gelöscht, ${result.chunksCreated} Chunks`, 'success');
+        } else {
+            showToast(`Sync ${spaceKey} fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
+        }
+    } catch (e) {
+        showToast(`Sync ${spaceKey} fehlgeschlagen: ` + e.message, 'error');
+    } finally {
+        setSyncing(false);
+        loadSyncStatus();
+    }
+}
+
+async function triggerIngest() {
+    if (isSyncing) return;
+    if (!confirm('Alle Spaces komplett neu ingesten? Das kann mehrere Minuten dauern und ersetzt alle bestehenden Daten.')) return;
+    setSyncing(true);
+    try {
+        const res = await fetch(`${API_BASE}/admin/ingest`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(`Ingest abgeschlossen: ${result.pagesProcessed} Seiten, ${result.chunksStored} Chunks (${formatDuration(result.duration)})`, 'success');
+        } else {
+            showToast(`Ingest fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
+        }
+    } catch (e) {
+        showToast('Ingest fehlgeschlagen: ' + e.message, 'error');
+    } finally {
+        setSyncing(false);
+        loadSyncStatus();
+    }
+}
+
+async function triggerSpaceIngest(spaceKey) {
+    if (isSyncing) return;
+    if (!confirm(`Space "${spaceKey}" komplett neu ingesten?`)) return;
+    setSyncing(true);
+    try {
+        const res = await fetch(`${API_BASE}/admin/ingest/${spaceKey}`, { method: 'POST' });
+        const result = await res.json();
+        if (res.ok) {
+            showToast(`Space ${spaceKey}: ${result.pagesProcessed} Seiten, ${result.chunksStored} Chunks`, 'success');
+        } else {
+            showToast(`Ingest ${spaceKey} fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
+        }
+    } catch (e) {
+        showToast(`Ingest ${spaceKey} fehlgeschlagen: ` + e.message, 'error');
+    } finally {
+        setSyncing(false);
+        loadSyncStatus();
+    }
+}
+
+function setSyncing(syncing) {
+    isSyncing = syncing;
+    syncBtn.disabled = syncing;
+    syncBtn.textContent = syncing ? 'Sync...' : 'Sync';
+    syncBtn.classList.toggle('syncing', syncing);
+    syncAllBtn.disabled = syncing;
+    ingestAllBtn.disabled = syncing;
+    adminSpaces.querySelectorAll('.admin-btn').forEach(btn => btn.disabled = syncing);
+}
+
+function formatDuration(duration) {
+    if (!duration) return '?';
+    const seconds = typeof duration === 'number' ? duration : duration.seconds || 0;
+    return seconds < 60 ? `${Math.round(seconds)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
+
+// ==================== Toast ====================
+
+function showToast(message, type) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    const icon = type === 'success' ? '\u2705' : type === 'error' ? '\u26A0\uFE0F' : '\u2139\uFE0F';
+    toast.textContent = `${icon} ${message}`;
+    toast.addEventListener('click', () => toast.remove());
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 400);
+    }, 6000);
+}
+
+// ==================== Chat ====================
 
 async function handleSubmit(e) {
     e.preventDefault();
@@ -149,10 +341,8 @@ async function streamChat(question, contentEl, assistantEl) {
         }
     }
 
-    // Remove cursor, render final content
     renderMarkdown(contentEl, fullText);
 
-    // Add sources
     if (sources.length > 0) {
         renderSources(assistantEl, sources);
     }
@@ -168,7 +358,6 @@ function renderMarkdown(el, text) {
 }
 
 function renderSources(messageEl, sources) {
-    // Remove cursor from content
     const cursor = messageEl.querySelector('.cursor');
     if (cursor) cursor.remove();
 
