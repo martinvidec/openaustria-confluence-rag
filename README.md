@@ -88,6 +88,40 @@ echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Linux (RHEL/CentOS/Fedora)
+
+```bash
+# Java 17
+sudo dnf install java-17-openjdk-devel
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+
+# Maven
+sudo dnf install maven
+
+# Docker (RHEL/CentOS — Docker CE Repository)
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+# Danach neu einloggen damit die Gruppenänderung greift
+
+# Docker (Fedora)
+sudo dnf install docker docker-compose
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+
+# Ollama (optional, alternativ via Docker)
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Nach der Installation `JAVA_HOME` dauerhaft setzen:
+
+```bash
+echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk' >> ~/.bashrc
+source ~/.bashrc
+```
+
 ### Windows
 
 ```powershell
