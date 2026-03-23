@@ -36,120 +36,218 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 
 ## Installation
 
+Es gibt zwei Varianten: **Mit Docker** (empfohlen, einfacher) oder **ohne Docker** (alle Dienste nativ). Die App selbst ist in beiden Fällen eine Java-Anwendung.
+
 ### macOS
 
-```bash
-# Java 17
-brew install openjdk@17
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-
-# Maven
-brew install maven
-
-# Docker Desktop
-# Download: https://www.docker.com/products/docker-desktop/
-# Oder: brew install --cask docker
-
-# Ollama (optional, alternativ via Docker)
-brew install ollama
-```
-
-Nach der Installation `JAVA_HOME` dauerhaft setzen:
+<details>
+<summary><strong>Mit Docker (empfohlen)</strong></summary>
 
 ```bash
+# Java 17 + Maven
+brew install openjdk@17 maven
 echo 'export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc
 source ~/.zshrc
+
+# Docker Desktop
+brew install --cask docker
+# Docker Desktop starten und warten bis es läuft
+
+# Infrastruktur starten (Qdrant + Ollama)
+docker compose up -d qdrant ollama
+
+# Ollama-Modelle laden
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull mistral
 ```
+
+</details>
+
+<details>
+<summary><strong>Ohne Docker</strong></summary>
+
+```bash
+# Java 17 + Maven
+brew install openjdk@17 maven
+echo 'export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc
+source ~/.zshrc
+
+# Qdrant nativ
+brew install qdrant
+qdrant &  # Startet auf Port 6333/6334
+
+# Ollama nativ
+brew install ollama
+ollama serve &  # Startet auf Port 11434
+ollama pull nomic-embed-text
+ollama pull mistral
+```
+
+</details>
+
+---
 
 ### Linux (Ubuntu/Debian)
 
+<details>
+<summary><strong>Mit Docker (empfohlen)</strong></summary>
+
 ```bash
-# Java 17
+# Java 17 + Maven
 sudo apt update
-sudo apt install openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-
-# Maven
-sudo apt install maven
-
-# Docker
-sudo apt install docker.io docker-compose-v2
-sudo usermod -aG docker $USER
-# Danach neu einloggen damit die Gruppenänderung greift
-
-# Ollama (optional, alternativ via Docker)
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Nach der Installation `JAVA_HOME` dauerhaft setzen:
-
-```bash
+sudo apt install -y openjdk-17-jdk maven
 echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
 source ~/.bashrc
+
+# Docker
+sudo apt install -y docker.io docker-compose-v2
+sudo usermod -aG docker $USER
+# Neu einloggen damit die Gruppenänderung greift
+
+# Infrastruktur starten (Qdrant + Ollama)
+docker compose up -d qdrant ollama
+
+# Ollama-Modelle laden
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull mistral
 ```
+
+</details>
+
+<details>
+<summary><strong>Ohne Docker</strong></summary>
+
+```bash
+# Java 17 + Maven
+sudo apt update
+sudo apt install -y openjdk-17-jdk maven
+echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
+source ~/.bashrc
+
+# Qdrant nativ
+curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-musl.tar.gz | tar xz
+./qdrant &  # Startet auf Port 6333/6334
+
+# Ollama nativ
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve &  # Startet auf Port 11434
+ollama pull nomic-embed-text
+ollama pull mistral
+```
+
+</details>
+
+---
 
 ### Linux (RHEL/CentOS/Fedora)
 
-```bash
-# Java 17
-sudo dnf install java-17-openjdk-devel
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-
-# Maven
-sudo dnf install maven
-
-# Docker (RHEL/CentOS — Docker CE Repository)
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo dnf install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER
-# Danach neu einloggen damit die Gruppenänderung greift
-
-# Docker (Fedora)
-sudo dnf install docker docker-compose
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER
-
-# Ollama (optional, alternativ via Docker)
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Nach der Installation `JAVA_HOME` dauerhaft setzen:
+<details>
+<summary><strong>Mit Docker (empfohlen)</strong></summary>
 
 ```bash
+# Java 17 + Maven
+sudo dnf install -y java-17-openjdk-devel maven
 echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk' >> ~/.bashrc
 source ~/.bashrc
+
+# Docker (RHEL/CentOS)
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+# Neu einloggen damit die Gruppenänderung greift
+
+# Docker (Fedora alternativ)
+# sudo dnf install -y docker docker-compose
+# sudo systemctl enable --now docker
+# sudo usermod -aG docker $USER
+
+# Infrastruktur starten (Qdrant + Ollama)
+docker compose up -d qdrant ollama
+
+# Ollama-Modelle laden
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull mistral
 ```
+
+</details>
+
+<details>
+<summary><strong>Ohne Docker</strong></summary>
+
+```bash
+# Java 17 + Maven
+sudo dnf install -y java-17-openjdk-devel maven
+echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk' >> ~/.bashrc
+source ~/.bashrc
+
+# Qdrant nativ
+curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-musl.tar.gz | tar xz
+./qdrant &  # Startet auf Port 6333/6334
+
+# Ollama nativ
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve &  # Startet auf Port 11434
+ollama pull nomic-embed-text
+ollama pull mistral
+```
+
+</details>
+
+---
 
 ### Windows
 
+<details>
+<summary><strong>Mit Docker (empfohlen)</strong></summary>
+
 ```powershell
-# Java 17 — Download und Installation:
-# https://adoptium.net/de/temurin/releases/?version=17
-# Oder via winget:
+# Java 17 + Maven
 winget install EclipseAdoptium.Temurin.17.JDK
-
-# Maven — Download und PATH setzen:
-# https://maven.apache.org/download.cgi
-# Oder via winget:
 winget install Apache.Maven
+setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
+# Pfad anpassen je nach Version, neues Terminal öffnen
 
-# Docker Desktop:
-# https://www.docker.com/products/docker-desktop/
+# Docker Desktop
 winget install Docker.DockerDesktop
+# Docker Desktop starten und warten bis es läuft
 
-# Ollama (optional, alternativ via Docker):
-# https://ollama.com/download/windows
-winget install Ollama.Ollama
+# Infrastruktur starten (Qdrant + Ollama)
+docker compose up -d qdrant ollama
+
+# Ollama-Modelle laden
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull mistral
 ```
 
-`JAVA_HOME` setzen (Systemumgebungsvariablen):
+</details>
+
+<details>
+<summary><strong>Ohne Docker</strong></summary>
 
 ```powershell
+# Java 17 + Maven
+winget install EclipseAdoptium.Temurin.17.JDK
+winget install Apache.Maven
 setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
-# Pfad anpassen je nach installierter Version
+# Pfad anpassen je nach Version, neues Terminal öffnen
+
+# Qdrant nativ
+# Download: https://github.com/qdrant/qdrant/releases (Windows Binary)
+# Entpacken und starten:
+.\qdrant.exe  # Startet auf Port 6333/6334
+
+# Ollama nativ
+winget install Ollama.Ollama
+ollama serve  # In separatem Terminal, startet auf Port 11434
+ollama pull nomic-embed-text
+ollama pull mistral
 ```
+
+</details>
+
+---
 
 **Hinweis Windows:** Umgebungsvariablen werden unter Windows anders übergeben. Statt Inline-Variablen eine `.env`-Datei nutzen oder die Variablen vorher setzen:
 
@@ -165,8 +263,20 @@ mvn spring-boot:run -DskipTests
 ```bash
 java -version          # Sollte 17.x.x zeigen
 mvn -version           # Sollte 3.8+ zeigen
+```
+
+Mit Docker zusätzlich:
+
+```bash
 docker --version       # Sollte 20+ zeigen
 docker compose version # Sollte 2.x zeigen
+```
+
+Ohne Docker zusätzlich:
+
+```bash
+curl http://localhost:6333/healthz     # Qdrant: "ok"
+curl http://localhost:11434/api/tags   # Ollama: Modell-Liste
 ```
 
 ## Schnellstart
