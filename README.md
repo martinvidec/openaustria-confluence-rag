@@ -8,8 +8,10 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 
 - **Confluence Crawler** — Extraktion via REST API mit PAT- oder Basic-Auth, inkl. PlantUML-Makros, Kommentare und PDF-Attachments
 - **Inkrementeller Sync** — Nur geänderte Seiten werden erneut verarbeitet (CQL-basiert)
-- **RAG-Pipeline** — Chunking, Embedding und Similarity Search über Qdrant
-- **Chat-Interface** — Streaming-Antworten mit Quellenangaben und Space-Filter
+- **RAG-Pipeline** — Chunking mit Titel-/Label-Anreicherung, Overlap, Embedding und Similarity Search über Qdrant
+- **Keyword Re-Ranking** — Vektorsuche + Keyword-basierte Nachsortierung für präzise Ergebnisse in Single-Domain-Korpora
+- **Chat-Interface** — Streaming-Antworten mit Quellenangaben, Space-Filter und Modell-Anzeige
+- **Admin-Panel** — Ingest/Sync-Steuerung mit Live-Fortschrittsanzeige
 - **Vollständig On-Premise** — LLM und Embedding via Ollama, kein Cloud-Zwang
 
 ## Tech Stack
@@ -21,7 +23,7 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 | HTML-Parsing | Jsoup |
 | PDF-Extraktion | Apache Tika |
 | VectorStore | Qdrant |
-| LLM & Embedding | Ollama (z.B. mistral + nomic-embed-text) |
+| LLM & Embedding | Ollama (z.B. gemma3:4b + nomic-embed-text) |
 | Frontend | Vanilla HTML/CSS/JS (kein Node.js nötig) |
 | Infrastruktur | Docker Compose |
 
@@ -58,7 +60,7 @@ docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
 docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull mistral
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 </details>
@@ -80,7 +82,7 @@ qdrant &  # Startet auf Port 6333/6334
 brew install ollama
 ollama serve &  # Startet auf Port 11434
 ollama pull nomic-embed-text
-ollama pull mistral
+ollama pull gemma3:4b
 ```
 
 </details>
@@ -109,7 +111,7 @@ docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
 docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull mistral
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 </details>
@@ -132,7 +134,7 @@ curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &  # Startet auf Port 11434
 ollama pull nomic-embed-text
-ollama pull mistral
+ollama pull gemma3:4b
 ```
 
 </details>
@@ -168,7 +170,7 @@ docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
 docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull mistral
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 </details>
@@ -190,7 +192,7 @@ curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &  # Startet auf Port 11434
 ollama pull nomic-embed-text
-ollama pull mistral
+ollama pull gemma3:4b
 ```
 
 </details>
@@ -218,7 +220,7 @@ docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
 docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull mistral
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 </details>
@@ -242,7 +244,7 @@ setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
 winget install Ollama.Ollama
 ollama serve  # In separatem Terminal, startet auf Port 11434
 ollama pull nomic-embed-text
-ollama pull mistral
+ollama pull gemma3:4b
 ```
 
 </details>
@@ -300,14 +302,14 @@ Via Docker:
 
 ```bash
 docker compose exec ollama ollama pull nomic-embed-text    # Embedding (erforderlich)
-docker compose exec ollama ollama pull mistral              # Chat, 7B, empfohlen
+docker compose exec ollama ollama pull gemma3:4b              # Chat (Default)
 ```
 
 Oder falls Ollama nativ installiert ist:
 
 ```bash
 ollama pull nomic-embed-text
-ollama pull mistral
+ollama pull gemma3:4b
 ```
 
 ### 4. Anwendung starten
@@ -361,6 +363,8 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 
 ## Konfiguration
 
+### Confluence
+
 | Variable | Beschreibung | Default |
 |---|---|---|
 | `CONFLUENCE_BASE_URL` | Confluence Server URL | `http://localhost:8090` |
@@ -368,11 +372,31 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 | `CONFLUENCE_USERNAME` | Basic Auth Username (Alternative zu PAT) | — |
 | `CONFLUENCE_PASSWORD` | Basic Auth Passwort | — |
 | `CONFLUENCE_SPACES` | Komma-separierte Space-Keys | — |
+
+### LLM & Embedding
+
+| Variable | Beschreibung | Default |
+|---|---|---|
 | `OLLAMA_BASE_URL` | Ollama API URL | `http://localhost:11434` |
-| `OLLAMA_CHAT_MODEL` | Chat-Modell | `llama3` |
+| `OLLAMA_CHAT_MODEL` | Chat-Modell | `gemma3:4b` |
 | `OLLAMA_EMBEDDING_MODEL` | Embedding-Modell | `nomic-embed-text` |
+
+### Infrastruktur
+
+| Variable | Beschreibung | Default |
+|---|---|---|
 | `QDRANT_HOST` | Qdrant Host | `localhost` |
 | `QDRANT_GRPC_PORT` | Qdrant gRPC Port | `6334` |
+
+### Ingestion & Query Tuning
+
+| Variable | Beschreibung | Default |
+|---|---|---|
+| `CHUNK_SIZE` | Chunk-Größe in Tokens | `500` |
+| `CHUNK_OVERLAP` | Overlap zwischen Chunks in Tokens | `50` |
+| `BATCH_SIZE` | Batch-Größe für Qdrant-Upserts | `20` |
+| `QUERY_TOP_K` | Anzahl Ergebnisse nach Re-Ranking | `10` |
+| `QUERY_SIMILARITY_THRESHOLD` | Min. Cosine-Similarity für Kandidaten | `0.45` |
 
 ## API-Endpunkte
 
@@ -381,10 +405,11 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 | `POST` | `/api/chat` | Synchrone Frage-Antwort |
 | `POST` | `/api/chat/stream` | Streaming via SSE |
 | `GET` | `/api/spaces` | Verfügbare Spaces |
-| `POST` | `/api/admin/ingest` | Vollständigen Crawl + Ingestion starten |
+| `POST` | `/api/admin/ingest` | Vollständigen Crawl + Ingestion starten (löscht alte Chunks) |
 | `POST` | `/api/admin/ingest/{spaceKey}` | Einzelnen Space ingesten |
 | `POST` | `/api/admin/sync` | Inkrementellen Sync starten |
 | `POST` | `/api/admin/sync/{spaceKey}` | Space-Sync |
+| `GET` | `/api/admin/job/status` | Aktueller Job-Status mit Fortschritt |
 | `GET` | `/api/admin/sync/status` | Sync-Status pro Space |
 | `GET` | `/actuator/health` | Health Check (Qdrant, Ollama, Confluence) |
 
@@ -397,16 +422,17 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 └──────────────┘     │   Pagination)     │     └────┬────┘
                       └──────────────────┘          │
                                                      ▼
-┌──────────────┐     ┌──────────────────┐     ┌──────────┐
-│   Ollama      │◀───│  Ingestion        │◀───│ Chunking │
-│  (Embedding)  │───▶│  Service          │───▶│ Pipeline │
-└──────────────┘     └──────────────────┘     └──────────┘
-                              │
-                              ▼
+┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Ollama      │◀───│  Ingestion        │◀───│ Chunking Pipeline │
+│  (Embedding)  │───▶│  Service          │───▶│ (Titel/Label/Pfad │
+└──────────────┘     └──────────────────┘     │  Anreicherung +   │
+                              │                │  Overlap)          │
+                              ▼                └──────────────────┘
 ┌──────────────┐     ┌──────────────────┐     ┌──────────┐
 │   Ollama      │◀───│  Query Service    │◀───│  Qdrant  │
-│  (Chat LLM)  │───▶│  (RAG Pipeline)   │    │ VectorDB │
-└──────────────┘     └───────┬──────────┘     └──────────┘
+│  (Chat LLM)  │───▶│  (Vektor-Suche +  │    │ VectorDB │
+└──────────────┘     │   Keyword Re-Rank)│    └──────────┘
+                      └───────┬──────────┘
                               │
                               ▼
                       ┌──────────────────┐
@@ -419,7 +445,7 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 
 ```
 src/main/java/at/openaustria/confluencerag/
-├── config/          # ConfluenceProperties, Health Indicators, CORS
+├── config/          # ConfluenceProperties, QueryProperties, Health Indicators, CORS
 ├── crawler/         # CrawlerService, AttachmentTextExtractor
 │   ├── client/      # ConfluenceClient (REST API, Pagination, Retry)
 │   ├── converter/   # ConfluenceHtmlConverter, MacroHandlers (PlantUML etc.)
@@ -436,12 +462,12 @@ src/main/resources/
 docs/
 ├── Confluence_RAG_Konzept.md
 ├── MVP_Phasenplan.md
-└── specs/           # 9 Implementierungsspezifikationen
+└── specs/           # 13 Implementierungsspezifikationen + Analysen
 ```
 
 ## Status
 
-MVP implementiert und funktionsfähig. Getestet mit Confluence 8.5 Data Center (Docker).
+MVP implementiert und funktionsfähig. Getestet mit Confluence 8.5 Data Center (Docker). 43 Unit-Tests.
 
 ## Lizenz
 
