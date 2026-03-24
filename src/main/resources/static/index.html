@@ -22,6 +22,20 @@
                 <span>Admin</span>
                 <button id="admin-close" class="admin-close-btn">&#10005;</button>
             </div>
+            <div id="job-progress" class="job-progress hidden">
+                <div class="job-progress-header">
+                    <span id="job-progress-phase" class="job-progress-phase"></span>
+                    <span id="job-progress-percent" class="job-progress-percent"></span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="job-progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="job-progress-detail" class="job-progress-detail"></div>
+                <div class="job-progress-stats">
+                    <span id="job-progress-chunks"></span>
+                    <span id="job-progress-errors"></span>
+                </div>
+            </div>
             <div id="admin-spaces" class="admin-spaces"></div>
             <div class="admin-global-actions">
                 <button id="sync-all-btn" class="admin-btn">Alle Spaces syncen</button>

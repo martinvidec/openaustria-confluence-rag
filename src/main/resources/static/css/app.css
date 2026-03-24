@@ -269,6 +269,55 @@ html, body {
     color: var(--danger);
 }
 
+/* Job Progress */
+.job-progress {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.job-progress.hidden { display: none; }
+
+.job-progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+}
+.job-progress-phase { font-weight: 600; }
+.job-progress-percent { color: var(--text-muted); }
+
+.progress-bar-container {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.job-progress-detail {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.job-progress-stats {
+    display: flex;
+    gap: 16px;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.job-progress-errors {
+    color: var(--danger);
+}
+
 .admin-global-actions {
     display: flex;
     gap: 8px;

@@ -170,13 +170,19 @@ async function startJob(url, label) {
 }
 
 async function pollJobStatus(label) {
+    showJobProgress(true);
     const poll = setInterval(async () => {
         try {
             const res = await fetch(`${API_BASE}/admin/job/status`);
             const job = await res.json();
 
+            if (job.status === 'running' && job.progress) {
+                updateJobProgress(job.progress);
+            }
+
             if (job.status === 'completed') {
                 clearInterval(poll);
+                showJobProgress(false);
                 setSyncing(false);
                 loadSyncStatus();
                 const r = job.result;
@@ -189,6 +195,7 @@ async function pollJobStatus(label) {
                 }
             } else if (job.status === 'failed') {
                 clearInterval(poll);
+                showJobProgress(false);
                 setSyncing(false);
                 loadSyncStatus();
                 showToast(`${label} fehlgeschlagen: ${job.error || 'Unbekannter Fehler'}`, 'error');
@@ -198,6 +205,38 @@ async function pollJobStatus(label) {
             // Netzwerkfehler beim Polling ignorieren, weiter versuchen
         }
     }, 3000);
+}
+
+function updateJobProgress(p) {
+    const phaseLabels = {
+        'CRAWLING': 'Crawling...',
+        'CHUNKING': 'Chunking...',
+        'STORING': 'Speichern...',
+        'CRAWLING_CHANGES': 'Aenderungen ermitteln...',
+        'UPDATING': 'Aktualisieren...',
+        'DETECTING_DELETIONS': 'Loeschungen erkennen...',
+        'DELETING': 'Loeschen...'
+    };
+
+    const pct = p.totalItems > 0 ? Math.round((p.currentItem * 100) / p.totalItems) : 0;
+    document.getElementById('job-progress-phase').textContent =
+        (p.currentSpace ? p.currentSpace + ': ' : '') + (phaseLabels[p.phase] || p.phase);
+    document.getElementById('job-progress-percent').textContent =
+        p.totalItems > 0 ? pct + '%' : '';
+    document.getElementById('job-progress-bar').style.width = pct + '%';
+    document.getElementById('job-progress-detail').textContent = p.detail || '';
+    document.getElementById('job-progress-chunks').textContent =
+        p.chunksProcessed > 0 ? p.chunksProcessed + ' Chunks' : '';
+    document.getElementById('job-progress-errors').textContent =
+        p.errors > 0 ? p.errors + ' Fehler' : '';
+}
+
+function showJobProgress(visible) {
+    document.getElementById('job-progress').classList.toggle('hidden', !visible);
+    // Auto-open admin panel when job starts
+    if (visible && adminPanel.classList.contains('hidden')) {
+        adminPanel.classList.remove('hidden');
+    }
 }
 
 function triggerSync() {
