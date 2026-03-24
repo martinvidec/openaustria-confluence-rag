@@ -4,6 +4,7 @@ import at.openaustria.confluencerag.config.ConfluenceProperties;
 import at.openaustria.confluencerag.query.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
@@ -21,6 +22,12 @@ public class ChatController {
     private final QueryService queryService;
     private final ConfluenceProperties properties;
     private final ObjectMapper objectMapper;
+
+    @Value("${spring.ai.ollama.chat.model:gemma3:4b}")
+    private String chatModel;
+
+    @Value("${spring.ai.ollama.embedding.model:nomic-embed-text}")
+    private String embeddingModel;
 
     public ChatController(QueryService queryService,
                           ConfluenceProperties properties,
@@ -58,6 +65,14 @@ public class ChatController {
         );
 
         return Flux.concat(tokens, footer);
+    }
+
+    @GetMapping("/config")
+    public ResponseEntity<Map<String, String>> getConfig() {
+        return ResponseEntity.ok(Map.of(
+                "chatModel", chatModel,
+                "embeddingModel", embeddingModel
+        ));
     }
 
     @GetMapping("/spaces")

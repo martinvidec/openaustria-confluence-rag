@@ -23,6 +23,7 @@ const ingestAllBtn = document.getElementById('ingest-all-btn');
 document.addEventListener('DOMContentLoaded', () => {
     loadSpaces();
     loadSyncStatus();
+    loadConfig();
     chatForm.addEventListener('submit', handleSubmit);
     syncBtn.addEventListener('click', () => triggerSync());
     adminToggle.addEventListener('click', toggleAdminPanel);
@@ -30,6 +31,18 @@ document.addEventListener('DOMContentLoaded', () => {
     syncAllBtn.addEventListener('click', () => triggerSync());
     ingestAllBtn.addEventListener('click', () => triggerIngest());
 });
+
+// ==================== Config ====================
+
+async function loadConfig() {
+    try {
+        const res = await fetch(`${API_BASE}/config`);
+        const config = await res.json();
+        document.getElementById('model-badge').textContent = config.chatModel || '';
+    } catch (e) {
+        console.error('Config konnte nicht geladen werden:', e);
+    }
+}
 
 // ==================== Spaces ====================
 

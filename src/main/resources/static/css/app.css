@@ -56,11 +56,29 @@ html, body {
     flex-shrink: 0;
 }
 
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .header h1 {
     font-size: 1.1rem;
     font-weight: 600;
     white-space: nowrap;
 }
+
+.model-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    white-space: nowrap;
+}
+.model-badge:empty { display: none; }
 
 .header-actions {
     display: flex;
