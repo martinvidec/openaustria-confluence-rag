@@ -1,5 +1,6 @@
 package at.openaustria.confluencerag.query;
 
+import at.openaustria.confluencerag.config.QueryProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -33,16 +34,30 @@ public class QueryService {
             - Antworte in der Sprache der Frage.
             - Fasse den relevanten Kontext zusammen, zitiere nicht wörtlich.
 
+            Kontext-Interpretation:
+            - Jeder Kontext-Block beginnt mit Metadaten (Titel, Pfad, Labels, Typ).
+            - Verwende den TITEL als primäres Zuordnungskriterium: Wenn nach einem \
+            bestimmten Dokument gefragt wird (z.B. "Spec 07"), beziehe dich nur auf \
+            Kontext-Blöcke, deren Titel dazu passt.
+            - Unterscheide klar zwischen verschiedenen Dokumenttypen: Specs, Issues, \
+            Protokolle, etc. sind verschiedene Dokumente, auch wenn sie dieselbe \
+            Nummer tragen.
+            - Typ "Seite" ist der Hauptinhalt, "Kommentar" sind Diskussionen zur Seite, \
+            "Anhang" sind angehängte Dateien.
+
             Kontext:
             %s
             """;
 
     private final VectorStore vectorStore;
     private final ChatClient chatClient;
+    private final QueryProperties queryProperties;
 
-    public QueryService(VectorStore vectorStore, ChatClient.Builder chatClientBuilder) {
+    public QueryService(VectorStore vectorStore, ChatClient.Builder chatClientBuilder,
+                        QueryProperties queryProperties) {
         this.vectorStore = vectorStore;
         this.chatClient = chatClientBuilder.build();
+        this.queryProperties = queryProperties;
     }
 
     public QueryResponse query(QueryRequest request) {
@@ -86,8 +101,8 @@ public class QueryService {
     private List<Document> searchRelevantDocs(QueryRequest request) {
         SearchRequest.Builder searchBuilder = SearchRequest.builder()
                 .query(request.question())
-                .topK(5)
-                .similarityThreshold(0.5);
+                .topK(queryProperties.topK())
+                .similarityThreshold(queryProperties.similarityThreshold());
 
         if (request.spaceFilter() != null && !request.spaceFilter().isEmpty()) {
             FilterExpressionBuilder b = new FilterExpressionBuilder();
@@ -105,10 +120,28 @@ public class QueryService {
 
     private String buildContext(List<Document> relevantDocs) {
         return relevantDocs.stream()
-                .map(doc -> "--- Quelle: %s (Space: %s) ---\n%s".formatted(
-                        doc.getMetadata().get("pageTitle"),
-                        doc.getMetadata().get("spaceKey"),
-                        doc.getText()))
+                .map(doc -> {
+                    String title = (String) doc.getMetadata().getOrDefault("pageTitle", "");
+                    String space = (String) doc.getMetadata().getOrDefault("spaceKey", "");
+                    String ancestors = (String) doc.getMetadata().getOrDefault("ancestors", "");
+                    String chunkType = (String) doc.getMetadata().getOrDefault("chunkType", "PAGE");
+                    String typLabel = switch (chunkType) {
+                        case "COMMENT" -> "Kommentar";
+                        case "ATTACHMENT" -> "Anhang";
+                        default -> "Seite";
+                    };
+
+                    StringBuilder header = new StringBuilder();
+                    header.append("--- Quelle: ").append(title);
+                    header.append(" (Space: ").append(space);
+                    if (!ancestors.isEmpty()) {
+                        header.append(", Pfad: ").append(ancestors);
+                    }
+                    header.append(", Typ: ").append(typLabel);
+                    header.append(") ---\n");
+                    header.append(doc.getText());
+                    return header.toString();
+                })
                 .collect(Collectors.joining("\n\n"));
     }
 
