@@ -7,7 +7,7 @@ spring:
       init:
         timeout: 60s
       chat:
-        model: ${OLLAMA_CHAT_MODEL:llama3}
+        model: ${OLLAMA_CHAT_MODEL:gemma3:4b}
         options:
           temperature: 0.3
       embedding:
