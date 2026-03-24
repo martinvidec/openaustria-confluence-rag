@@ -53,6 +53,87 @@ class ChunkingServiceTest {
     }
 
     @Test
+    void chunkTextStartsWithHeader() {
+        ConfluenceDocument doc = createDoc(LONG_TEXT, List.of(), List.of());
+        List<Document> chunks = chunkingService.chunkDocument(doc);
+
+        assertFalse(chunks.isEmpty());
+        String chunkText = chunks.get(0).getText();
+        assertTrue(chunkText.startsWith("Titel: Test Page\n"), "Chunk should start with title header");
+        assertTrue(chunkText.contains("Pfad: Parent > Grandparent"), "Chunk should contain ancestors");
+        assertTrue(chunkText.contains("Labels: api,rest"), "Chunk should contain labels");
+        assertTrue(chunkText.contains("Typ: PAGE"), "Chunk should contain chunk type");
+    }
+
+    @Test
+    void chunkHeaderOmitsEmptyFields() {
+        ConfluenceDocument doc = new ConfluenceDocument(
+                12345L, "DEV", "Development", "Test Page",
+                "https://confluence/display/DEV/Test+Page",
+                LONG_TEXT, List.of(), List.of(), List.of(),
+                "Author", Instant.now(), List.of()
+        );
+        List<Document> chunks = chunkingService.chunkDocument(doc);
+
+        String chunkText = chunks.get(0).getText();
+        assertTrue(chunkText.contains("Titel: Test Page\n"));
+        assertFalse(chunkText.contains("Pfad:"), "Empty ancestors should be omitted");
+        assertFalse(chunkText.contains("Labels:"), "Empty labels should be omitted");
+    }
+
+    @Test
+    void commentChunkHasCommentTypeInHeader() {
+        CommentDocument comment = new CommentDocument(1L, LONG_COMMENT, "User", Instant.now());
+        ConfluenceDocument doc = createDoc(LONG_TEXT, List.of(comment), List.of());
+        List<Document> chunks = chunkingService.chunkDocument(doc);
+
+        Document commentChunk = chunks.stream()
+                .filter(c -> "COMMENT".equals(c.getMetadata().get("chunkType")))
+                .findFirst().orElseThrow();
+        assertTrue(commentChunk.getText().contains("Typ: COMMENT"));
+    }
+
+    @Test
+    void attachmentChunkHasAttachmentTypeInHeader() {
+        AttachmentDocument att = new AttachmentDocument(1L, "doc.pdf", "application/pdf", LONG_ATTACHMENT);
+        ConfluenceDocument doc = createDoc(LONG_TEXT, List.of(), List.of(att));
+        List<Document> chunks = chunkingService.chunkDocument(doc);
+
+        Document attChunk = chunks.stream()
+                .filter(c -> "ATTACHMENT".equals(c.getMetadata().get("chunkType")))
+                .findFirst().orElseThrow();
+        assertTrue(attChunk.getText().contains("Typ: ATTACHMENT"));
+    }
+
+    @Test
+    void applyOverlapAddsOverlapText() {
+        List<String> chunks = List.of("First chunk with some content here.", "Second chunk with other content.");
+        List<String> overlapped = chunkingService.applyOverlap(chunks);
+
+        assertEquals(2, overlapped.size());
+        assertEquals("First chunk with some content here.", overlapped.get(0));
+        // Second chunk should contain overlap from first chunk
+        assertTrue(overlapped.get(1).contains("Second chunk with other content."));
+        assertTrue(overlapped.get(1).length() > "Second chunk with other content.".length(),
+                "Overlapped chunk should be longer than original");
+    }
+
+    @Test
+    void applyOverlapSingleChunkUnchanged() {
+        List<String> chunks = List.of("Only one chunk.");
+        List<String> overlapped = chunkingService.applyOverlap(chunks);
+
+        assertEquals(1, overlapped.size());
+        assertEquals("Only one chunk.", overlapped.get(0));
+    }
+
+    @Test
+    void applyOverlapEmptyListUnchanged() {
+        List<String> overlapped = chunkingService.applyOverlap(List.of());
+        assertTrue(overlapped.isEmpty());
+    }
+
+    @Test
     void chunksComments() {
         CommentDocument comment = new CommentDocument(1L, LONG_COMMENT, "User", Instant.now());
         ConfluenceDocument doc = createDoc(LONG_TEXT, List.of(comment), List.of());
