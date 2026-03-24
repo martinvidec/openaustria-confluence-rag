@@ -13,9 +13,12 @@ import reactor.core.publisher.Flux;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -99,9 +102,13 @@ public class QueryService {
     }
 
     private List<Document> searchRelevantDocs(QueryRequest request) {
+        // Fetch a large candidate set for keyword re-ranking, then return top-K
+        // In single-domain corpora, vector scores are compressed into a narrow band,
+        // so we need many candidates to ensure the right documents reach the re-ranker.
+        int fetchK = Math.max(queryProperties.topK() * 10, 100);
         SearchRequest.Builder searchBuilder = SearchRequest.builder()
                 .query(request.question())
-                .topK(queryProperties.topK())
+                .topK(fetchK)
                 .similarityThreshold(queryProperties.similarityThreshold());
 
         if (request.spaceFilter() != null && !request.spaceFilter().isEmpty()) {
@@ -115,7 +122,58 @@ public class QueryService {
             }
         }
 
-        return vectorStore.similaritySearch(searchBuilder.build());
+        List<Document> candidates = vectorStore.similaritySearch(searchBuilder.build());
+        return rerankByKeywords(candidates, request.question(), queryProperties.topK());
+    }
+
+    /**
+     * Re-ranks vector search results by boosting chunks whose title or text
+     * contains keywords from the query. This compensates for the narrow similarity
+     * band in single-domain corpora where vector scores alone can't distinguish
+     * the correct document.
+     */
+    List<Document> rerankByKeywords(List<Document> candidates, String question, int topK) {
+        if (candidates.isEmpty()) {
+            return candidates;
+        }
+
+        Set<String> queryWords = extractKeywords(question);
+
+        List<Map.Entry<Document, Double>> scored = new ArrayList<>();
+        for (Document doc : candidates) {
+            String title = ((String) doc.getMetadata().getOrDefault("pageTitle", "")).toLowerCase();
+            String text = doc.getText().toLowerCase();
+
+            long titleHits = queryWords.stream().filter(title::contains).count();
+            long textHits = queryWords.stream().filter(text::contains).count();
+
+            // Title matches are weighted 3x more than text matches
+            double keywordScore = (titleHits * 3.0 + textHits) / (queryWords.size() * 4.0);
+            scored.add(Map.entry(doc, keywordScore));
+        }
+
+        // Sort by keyword score descending (stable sort preserves vector-score order for ties)
+        scored.sort(Map.Entry.<Document, Double>comparingByValue().reversed());
+
+        return scored.stream()
+                .limit(topK)
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private static final Set<String> STOP_WORDS = Set.of(
+            "der", "die", "das", "ein", "eine", "und", "oder", "im", "von",
+            "für", "fuer", "mit", "auf", "an", "zu", "ist", "sind", "was", "wie",
+            "wer", "wo", "den", "dem", "des", "einen", "einer", "einem",
+            "the", "is", "are", "of", "for", "in", "on", "to", "and", "or",
+            "what", "how", "which", "this", "that", "from", "with"
+    );
+
+    private Set<String> extractKeywords(String question) {
+        return Arrays.stream(question.toLowerCase().replaceAll("[^a-zäöüß0-9\\s]", "").split("\\s+"))
+                .filter(w -> w.length() > 1)
+                .filter(w -> !STOP_WORDS.contains(w))
+                .collect(Collectors.toSet());
     }
 
     private String buildContext(List<Document> relevantDocs) {

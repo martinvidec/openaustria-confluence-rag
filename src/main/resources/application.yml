@@ -26,7 +26,7 @@ ingestion:
 
 query:
   top-k: ${QUERY_TOP_K:10}
-  similarity-threshold: ${QUERY_SIMILARITY_THRESHOLD:0.65}
+  similarity-threshold: ${QUERY_SIMILARITY_THRESHOLD:0.45}
 
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}

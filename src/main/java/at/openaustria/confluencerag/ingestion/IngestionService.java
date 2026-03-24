@@ -5,10 +5,14 @@ import at.openaustria.confluencerag.config.IngestionProperties;
 import at.openaustria.confluencerag.crawler.CrawlerService;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
 import at.openaustria.confluencerag.web.JobProgress;
+import io.qdrant.client.QdrantClient;
+import io.qdrant.client.grpc.Collections.Distance;
+import io.qdrant.client.grpc.Collections.VectorParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -23,21 +27,28 @@ public class IngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
     private static final int CHUNK_TIMEOUT_SECONDS = 120;
+    private static final int VECTOR_DIMENSION = 768;
     private final int batchSize;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final CrawlerService crawlerService;
     private final ChunkingService chunkingService;
     private final VectorStore vectorStore;
+    private final QdrantClient qdrantClient;
+    private final String collectionName;
     private final ConfluenceProperties properties;
 
     public IngestionService(CrawlerService crawlerService,
                             ChunkingService chunkingService,
                             VectorStore vectorStore,
+                            QdrantClient qdrantClient,
+                            @Value("${spring.ai.vectorstore.qdrant.collection-name:confluence-chunks}") String collectionName,
                             ConfluenceProperties properties,
                             IngestionProperties ingestionProperties) {
         this.crawlerService = crawlerService;
         this.chunkingService = chunkingService;
         this.vectorStore = vectorStore;
+        this.qdrantClient = qdrantClient;
+        this.collectionName = collectionName;
         this.properties = properties;
         this.batchSize = ingestionProperties.batchSize();
     }
@@ -48,6 +59,10 @@ public class IngestionService {
 
     public IngestionResult ingestAll(Consumer<JobProgress> onProgress) {
         Instant start = Instant.now();
+
+        onProgress.accept(new JobProgress("CLEARING", "Lösche alte Chunks...",
+                0, 0, 0, 0, null));
+        clearCollection();
 
         onProgress.accept(new JobProgress("CRAWLING", "Crawle alle Spaces...",
                 0, 0, 0, 0, null));
@@ -186,6 +201,23 @@ public class IngestionService {
             throw e;
         } catch (ExecutionException e) {
             throw (Exception) e.getCause();
+        }
+    }
+
+    private void clearCollection() {
+        try {
+            qdrantClient.deleteCollectionAsync(collectionName).get(30, TimeUnit.SECONDS);
+            log.info("Qdrant Collection '{}' gelöscht", collectionName);
+
+            qdrantClient.createCollectionAsync(collectionName,
+                    VectorParams.newBuilder()
+                            .setSize(VECTOR_DIMENSION)
+                            .setDistance(Distance.Cosine)
+                            .build()
+            ).get(30, TimeUnit.SECONDS);
+            log.info("Qdrant Collection '{}' neu erstellt", collectionName);
+        } catch (Exception e) {
+            log.warn("Collection-Reset fehlgeschlagen, fahre fort: {}", e.getMessage());
         }
     }
 }
