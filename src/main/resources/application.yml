@@ -37,6 +37,8 @@ confluence:
 
 server:
   port: 8080
+  tomcat:
+    connection-timeout: -1
 
 management:
   endpoints:

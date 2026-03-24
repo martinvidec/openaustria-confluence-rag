@@ -148,84 +148,74 @@ function renderAdminSpaces(statusMap) {
     });
 }
 
-// ==================== Sync & Ingest ====================
+// ==================== Sync & Ingest (async with polling) ====================
 
-async function triggerSync() {
+async function startJob(url, label) {
     if (isSyncing) return;
     setSyncing(true);
+    showToast(`${label} gestartet...`, 'info');
     try {
-        const res = await fetch(`${API_BASE}/admin/sync`, { method: 'POST' });
-        const result = await res.json();
-        if (res.ok) {
-            showToast(`Sync abgeschlossen: ${result.pagesUpdated} aktualisiert, ${result.pagesDeleted} gelöscht, ${result.chunksCreated} Chunks (${formatDuration(result.duration)})`, 'success');
-        } else {
-            showToast(`Sync fehlgeschlagen: ${result.message || 'Unbekannter Fehler'}`, 'error');
+        const res = await fetch(url, { method: 'POST' });
+        const data = await res.json();
+        if (res.status === 409) {
+            showToast(`Es laeuft bereits ein Job: ${data.operation}`, 'error');
+            setSyncing(false);
+            return;
         }
+        pollJobStatus(label);
     } catch (e) {
-        showToast('Sync fehlgeschlagen: ' + e.message, 'error');
-    } finally {
+        showToast(`${label} fehlgeschlagen: ${e.message}`, 'error');
         setSyncing(false);
-        loadSyncStatus();
     }
 }
 
-async function triggerSpaceSync(spaceKey) {
-    if (isSyncing) return;
-    setSyncing(true);
-    try {
-        const res = await fetch(`${API_BASE}/admin/sync/${spaceKey}`, { method: 'POST' });
-        const result = await res.json();
-        if (res.ok) {
-            showToast(`Space ${spaceKey}: ${result.pagesUpdated} aktualisiert, ${result.pagesDeleted} gelöscht, ${result.chunksCreated} Chunks`, 'success');
-        } else {
-            showToast(`Sync ${spaceKey} fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
+async function pollJobStatus(label) {
+    const poll = setInterval(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/admin/job/status`);
+            const job = await res.json();
+
+            if (job.status === 'completed') {
+                clearInterval(poll);
+                setSyncing(false);
+                loadSyncStatus();
+                const r = job.result;
+                if (r && r.pagesProcessed !== undefined) {
+                    showToast(`${label} abgeschlossen: ${r.pagesProcessed} Seiten, ${r.chunksStored || r.chunksCreated || 0} Chunks (${formatDuration(r.duration)})`, 'success');
+                } else if (r && r.pagesUpdated !== undefined) {
+                    showToast(`${label} abgeschlossen: ${r.pagesUpdated} aktualisiert, ${r.pagesDeleted} geloescht, ${r.chunksCreated} Chunks (${formatDuration(r.duration)})`, 'success');
+                } else {
+                    showToast(`${label} abgeschlossen`, 'success');
+                }
+            } else if (job.status === 'failed') {
+                clearInterval(poll);
+                setSyncing(false);
+                loadSyncStatus();
+                showToast(`${label} fehlgeschlagen: ${job.error || 'Unbekannter Fehler'}`, 'error');
+            }
+            // status === 'running' → weiter pollen
+        } catch (e) {
+            // Netzwerkfehler beim Polling ignorieren, weiter versuchen
         }
-    } catch (e) {
-        showToast(`Sync ${spaceKey} fehlgeschlagen: ` + e.message, 'error');
-    } finally {
-        setSyncing(false);
-        loadSyncStatus();
-    }
+    }, 3000);
 }
 
-async function triggerIngest() {
-    if (isSyncing) return;
-    if (!confirm('Alle Spaces komplett neu ingesten? Das kann mehrere Minuten dauern und ersetzt alle bestehenden Daten.')) return;
-    setSyncing(true);
-    try {
-        const res = await fetch(`${API_BASE}/admin/ingest`, { method: 'POST' });
-        const result = await res.json();
-        if (res.ok) {
-            showToast(`Ingest abgeschlossen: ${result.pagesProcessed} Seiten, ${result.chunksStored} Chunks (${formatDuration(result.duration)})`, 'success');
-        } else {
-            showToast(`Ingest fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
-        }
-    } catch (e) {
-        showToast('Ingest fehlgeschlagen: ' + e.message, 'error');
-    } finally {
-        setSyncing(false);
-        loadSyncStatus();
-    }
+function triggerSync() {
+    startJob(`${API_BASE}/admin/sync`, 'Sync');
 }
 
-async function triggerSpaceIngest(spaceKey) {
-    if (isSyncing) return;
+function triggerSpaceSync(spaceKey) {
+    startJob(`${API_BASE}/admin/sync/${spaceKey}`, `Sync ${spaceKey}`);
+}
+
+function triggerIngest() {
+    if (!confirm('Alle Spaces komplett neu ingesten? Das kann mehrere Minuten dauern.')) return;
+    startJob(`${API_BASE}/admin/ingest`, 'Ingest');
+}
+
+function triggerSpaceIngest(spaceKey) {
     if (!confirm(`Space "${spaceKey}" komplett neu ingesten?`)) return;
-    setSyncing(true);
-    try {
-        const res = await fetch(`${API_BASE}/admin/ingest/${spaceKey}`, { method: 'POST' });
-        const result = await res.json();
-        if (res.ok) {
-            showToast(`Space ${spaceKey}: ${result.pagesProcessed} Seiten, ${result.chunksStored} Chunks`, 'success');
-        } else {
-            showToast(`Ingest ${spaceKey} fehlgeschlagen: ${result.message || 'Fehler'}`, 'error');
-        }
-    } catch (e) {
-        showToast(`Ingest ${spaceKey} fehlgeschlagen: ` + e.message, 'error');
-    } finally {
-        setSyncing(false);
-        loadSyncStatus();
-    }
+    startJob(`${API_BASE}/admin/ingest/${spaceKey}`, `Ingest ${spaceKey}`);
 }
 
 function setSyncing(syncing) {

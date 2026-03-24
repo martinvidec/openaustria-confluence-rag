@@ -1,18 +1,27 @@
 package at.openaustria.confluencerag.web;
 
 import at.openaustria.confluencerag.ingestion.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
     private final IngestionService ingestionService;
     private final SyncService syncService;
     private final SyncStateRepository syncStateRepository;
+
+    private final AtomicReference<JobStatus> currentJob = new AtomicReference<>(
+            new JobStatus("idle", null, null, null));
 
     public AdminController(IngestionService ingestionService,
                            SyncService syncService,
@@ -23,27 +32,95 @@ public class AdminController {
     }
 
     @PostMapping("/ingest")
-    public ResponseEntity<IngestionResult> triggerIngestion() {
-        return ResponseEntity.ok(ingestionService.ingestAll());
+    public ResponseEntity<JobStatus> triggerIngestion() {
+        if (isRunning()) {
+            return ResponseEntity.status(409).body(currentJob.get());
+        }
+        currentJob.set(new JobStatus("running", "ingest", null, null));
+        CompletableFuture.runAsync(() -> {
+            try {
+                IngestionResult result = ingestionService.ingestAll();
+                currentJob.set(new JobStatus("completed", "ingest", result, null));
+                log.info("Ingest abgeschlossen: {}", result);
+            } catch (Exception e) {
+                currentJob.set(new JobStatus("failed", "ingest", null, e.getMessage()));
+                log.error("Ingest fehlgeschlagen", e);
+            }
+        });
+        return ResponseEntity.accepted().body(currentJob.get());
     }
 
     @PostMapping("/ingest/{spaceKey}")
-    public ResponseEntity<IngestionResult> triggerSpaceIngestion(@PathVariable String spaceKey) {
-        return ResponseEntity.ok(ingestionService.ingestSpace(spaceKey));
+    public ResponseEntity<JobStatus> triggerSpaceIngestion(@PathVariable String spaceKey) {
+        if (isRunning()) {
+            return ResponseEntity.status(409).body(currentJob.get());
+        }
+        currentJob.set(new JobStatus("running", "ingest:" + spaceKey, null, null));
+        CompletableFuture.runAsync(() -> {
+            try {
+                IngestionResult result = ingestionService.ingestSpace(spaceKey);
+                currentJob.set(new JobStatus("completed", "ingest:" + spaceKey, result, null));
+            } catch (Exception e) {
+                currentJob.set(new JobStatus("failed", "ingest:" + spaceKey, null, e.getMessage()));
+            }
+        });
+        return ResponseEntity.accepted().body(currentJob.get());
     }
 
     @PostMapping("/sync")
-    public ResponseEntity<SyncResult> triggerSync() {
-        return ResponseEntity.ok(syncService.syncAll());
+    public ResponseEntity<JobStatus> triggerSync() {
+        if (isRunning()) {
+            return ResponseEntity.status(409).body(currentJob.get());
+        }
+        currentJob.set(new JobStatus("running", "sync", null, null));
+        CompletableFuture.runAsync(() -> {
+            try {
+                SyncResult result = syncService.syncAll();
+                currentJob.set(new JobStatus("completed", "sync", result, null));
+                log.info("Sync abgeschlossen: {}", result);
+            } catch (Exception e) {
+                currentJob.set(new JobStatus("failed", "sync", null, e.getMessage()));
+                log.error("Sync fehlgeschlagen", e);
+            }
+        });
+        return ResponseEntity.accepted().body(currentJob.get());
     }
 
     @PostMapping("/sync/{spaceKey}")
-    public ResponseEntity<SyncResult> triggerSpaceSync(@PathVariable String spaceKey) {
-        return ResponseEntity.ok(syncService.syncSpace(spaceKey));
+    public ResponseEntity<JobStatus> triggerSpaceSync(@PathVariable String spaceKey) {
+        if (isRunning()) {
+            return ResponseEntity.status(409).body(currentJob.get());
+        }
+        currentJob.set(new JobStatus("running", "sync:" + spaceKey, null, null));
+        CompletableFuture.runAsync(() -> {
+            try {
+                SyncResult result = syncService.syncSpace(spaceKey);
+                currentJob.set(new JobStatus("completed", "sync:" + spaceKey, result, null));
+            } catch (Exception e) {
+                currentJob.set(new JobStatus("failed", "sync:" + spaceKey, null, e.getMessage()));
+            }
+        });
+        return ResponseEntity.accepted().body(currentJob.get());
+    }
+
+    @GetMapping("/job/status")
+    public ResponseEntity<JobStatus> getJobStatus() {
+        return ResponseEntity.ok(currentJob.get());
     }
 
     @GetMapping("/sync/status")
     public ResponseEntity<Map<String, SyncStateRepository.SpaceState>> getSyncStatus() {
         return ResponseEntity.ok(syncStateRepository.getAllStates());
     }
+
+    private boolean isRunning() {
+        return "running".equals(currentJob.get().status());
+    }
+
+    public record JobStatus(
+        String status,    // idle, running, completed, failed
+        String operation, // ingest, sync, ingest:SPACEKEY, sync:SPACEKEY
+        Object result,    // IngestionResult or SyncResult
+        String error
+    ) {}
 }
