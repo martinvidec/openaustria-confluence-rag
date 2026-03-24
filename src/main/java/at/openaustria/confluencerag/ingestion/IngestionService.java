@@ -4,6 +4,7 @@ import at.openaustria.confluencerag.config.ConfluenceProperties;
 import at.openaustria.confluencerag.config.IngestionProperties;
 import at.openaustria.confluencerag.crawler.CrawlerService;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
+import at.openaustria.confluencerag.web.JobProgress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 @Service
 public class IngestionService {
@@ -41,16 +43,27 @@ public class IngestionService {
     }
 
     public IngestionResult ingestAll() {
+        return ingestAll(p -> {});
+    }
+
+    public IngestionResult ingestAll(Consumer<JobProgress> onProgress) {
         Instant start = Instant.now();
+
+        onProgress.accept(new JobProgress("CRAWLING", "Crawle alle Spaces...",
+                0, 0, 0, 0, null));
+
         List<ConfluenceDocument> documents = crawlerService.crawlAll();
 
         log.info("Ingestion gestartet: {} Dokumente", documents.size());
         int chunksCreated = 0;
-        int chunksStored = 0;
         int errors = 0;
 
         List<Document> allChunks = new ArrayList<>();
-        for (ConfluenceDocument doc : documents) {
+        for (int i = 0; i < documents.size(); i++) {
+            ConfluenceDocument doc = documents.get(i);
+            onProgress.accept(new JobProgress("CHUNKING",
+                    String.format("Seite %d/%d — '%s'", i + 1, documents.size(), doc.title()),
+                    i + 1, documents.size(), chunksCreated, errors, doc.spaceKey()));
             try {
                 List<Document> chunks = chunkingService.chunkDocument(doc);
                 allChunks.addAll(chunks);
@@ -62,7 +75,7 @@ public class IngestionService {
         }
 
         log.info("Chunking: {} Dokumente → {} Chunks", documents.size(), chunksCreated);
-        chunksStored = storeBatched(allChunks);
+        int chunksStored = storeBatched(allChunks, onProgress, errors);
 
         Duration duration = Duration.between(start, Instant.now());
         log.info("Ingestion abgeschlossen: {} Chunks in {}s",
@@ -74,15 +87,27 @@ public class IngestionService {
     }
 
     public IngestionResult ingestSpace(String spaceKey) {
+        return ingestSpace(spaceKey, p -> {});
+    }
+
+    public IngestionResult ingestSpace(String spaceKey, Consumer<JobProgress> onProgress) {
         Instant start = Instant.now();
+
+        onProgress.accept(new JobProgress("CRAWLING",
+                String.format("Crawle Space %s...", spaceKey),
+                0, 0, 0, 0, spaceKey));
+
         List<ConfluenceDocument> documents = crawlerService.crawlSpace(spaceKey);
 
         int chunksCreated = 0;
-        int chunksStored = 0;
         int errors = 0;
 
         List<Document> allChunks = new ArrayList<>();
-        for (ConfluenceDocument doc : documents) {
+        for (int i = 0; i < documents.size(); i++) {
+            ConfluenceDocument doc = documents.get(i);
+            onProgress.accept(new JobProgress("CHUNKING",
+                    String.format("Seite %d/%d — '%s'", i + 1, documents.size(), doc.title()),
+                    i + 1, documents.size(), chunksCreated, errors, spaceKey));
             try {
                 List<Document> chunks = chunkingService.chunkDocument(doc);
                 allChunks.addAll(chunks);
@@ -93,7 +118,7 @@ public class IngestionService {
             }
         }
 
-        chunksStored = storeBatched(allChunks);
+        int chunksStored = storeBatched(allChunks, onProgress, errors);
 
         Duration duration = Duration.between(start, Instant.now());
         return new IngestionResult(1, documents.size(), chunksCreated, chunksStored, errors, duration);
@@ -102,11 +127,11 @@ public class IngestionService {
     public void ingestDocument(ConfluenceDocument doc) {
         List<Document> chunks = chunkingService.chunkDocument(doc);
         if (!chunks.isEmpty()) {
-            storeBatched(chunks);
+            storeBatched(chunks, p -> {}, 0);
         }
     }
 
-    private int storeBatched(List<Document> chunks) {
+    private int storeBatched(List<Document> chunks, Consumer<JobProgress> onProgress, int errors) {
         int stored = 0;
         for (int i = 0; i < chunks.size(); i += batchSize) {
             List<Document> batch = chunks.subList(i, Math.min(i + batchSize, chunks.size()));
@@ -124,6 +149,9 @@ public class IngestionService {
                         i, Math.min(i + batchSize, chunks.size()), e.getMessage());
                 stored += storeIndividually(batch);
             }
+            onProgress.accept(new JobProgress("STORING",
+                    String.format("%d/%d Chunks gespeichert", stored, chunks.size()),
+                    stored, chunks.size(), stored, errors, null));
         }
         return stored;
     }
