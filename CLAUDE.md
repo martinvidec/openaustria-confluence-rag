@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 
 mvn clean compile                                    # Compile
-mvn test                                             # Run all tests (33 tests)
+mvn test                                             # Run all tests (43 tests)
 mvn spring-boot:run -DskipTests                      # Start app (requires Qdrant + Ollama)
 mvn test -pl . -Dtest=ConfluenceClientTest            # Run single test class
 mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
@@ -21,9 +21,9 @@ mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
 # Infrastructure
 docker compose up -d qdrant ollama           # Or use native Ollama if installed
 
-# App with Basic Auth (local Confluence test)
+# App with Basic Auth (local Confluence test, default model: gemma3:4b)
 CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=ds,OP \
-  OLLAMA_CHAT_MODEL=mistral mvn spring-boot:run -DskipTests
+  mvn spring-boot:run -DskipTests
 
 # Local Confluence test instance
 docker compose -f docker-compose.test.yml up -d      # Confluence 8.5 on port 8090
@@ -35,7 +35,7 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 
 1. **Crawler** (`crawler/`) — `ConfluenceClient` (PAT or Basic auth, pagination, retry) → `ConfluenceHtmlConverter` (Jsoup XML parser, MacroHandler strategy pattern for PlantUML etc.) → `AttachmentTextExtractor` (Tika) → `CrawlerService` orchestrates per-space crawl into `ConfluenceDocument` records.
 
-2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 800 token/100 overlap) → `IngestionService` (batch upsert to Qdrant, 50/batch) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default).
+2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 500 token/50 overlap) → `IngestionService` (parallel batch upsert to Qdrant, 50/batch, 2 threads) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default). Chunk deletion uses `QdrantClient.deleteAsync(filter)` directly (not `VectorStore.delete()` which only accepts IDs).
 
 3. **Query** (`query/`) — `QueryService` (similarity search → context build → Ollama ChatClient) with space filtering via Qdrant FilterExpression. Streaming via `Flux<String>`.
 
