@@ -127,6 +127,11 @@ public class IngestionService {
     public IngestionResult ingestSpace(String spaceKey, Consumer<JobProgress> onProgress) {
         Instant start = Instant.now();
 
+        onProgress.accept(new JobProgress("CLEARING",
+                String.format("Lösche alte Chunks für Space %s...", spaceKey),
+                0, 0, 0, 0, spaceKey));
+        deleteChunksForSpace(spaceKey);
+
         onProgress.accept(new JobProgress("CRAWLING",
                 String.format("Crawle Space %s...", spaceKey),
                 0, 0, 0, 0, spaceKey));
@@ -159,6 +164,7 @@ public class IngestionService {
     }
 
     public void ingestDocument(ConfluenceDocument doc) {
+        deleteChunksForPage(String.valueOf(doc.pageId()));
         List<Document> chunks = chunkingService.chunkDocument(doc);
         if (!chunks.isEmpty()) {
             storeBatched(chunks, p -> {}, 0);
@@ -223,6 +229,24 @@ public class IngestionService {
             }
         }
         return stored;
+    }
+
+    private void deleteChunksForSpace(String spaceKey) {
+        try {
+            vectorStore.delete(List.of("spaceKey == '" + spaceKey + "'"));
+            log.info("Chunks für Space '{}' gelöscht", spaceKey);
+        } catch (Exception e) {
+            log.warn("Chunks für Space '{}' konnten nicht gelöscht werden: {}", spaceKey, e.getMessage());
+        }
+    }
+
+    private void deleteChunksForPage(String pageId) {
+        try {
+            vectorStore.delete(List.of("pageId == '" + pageId + "'"));
+            log.info("Chunks für Seite '{}' gelöscht", pageId);
+        } catch (Exception e) {
+            log.warn("Chunks für pageId {} konnten nicht gelöscht werden: {}", pageId, e.getMessage());
+        }
     }
 
     private void clearCollection() {
