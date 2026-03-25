@@ -8,6 +8,7 @@ import at.openaustria.confluencerag.web.JobProgress;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.grpc.Collections.Distance;
 import io.qdrant.client.grpc.Collections.VectorParams;
+import io.qdrant.client.grpc.Points;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -233,7 +234,13 @@ public class IngestionService {
 
     private void deleteChunksForSpace(String spaceKey) {
         try {
-            vectorStore.delete(List.of("spaceKey == '" + spaceKey + "'"));
+            Points.Filter filter = Points.Filter.newBuilder()
+                    .addMust(Points.Condition.newBuilder()
+                            .setField(Points.FieldCondition.newBuilder()
+                                    .setKey("spaceKey")
+                                    .setMatch(Points.Match.newBuilder().setKeyword(spaceKey))))
+                    .build();
+            qdrantClient.deleteAsync(collectionName, filter).get(30, TimeUnit.SECONDS);
             log.info("Chunks für Space '{}' gelöscht", spaceKey);
         } catch (Exception e) {
             log.warn("Chunks für Space '{}' konnten nicht gelöscht werden: {}", spaceKey, e.getMessage());
@@ -242,7 +249,13 @@ public class IngestionService {
 
     private void deleteChunksForPage(String pageId) {
         try {
-            vectorStore.delete(List.of("pageId == '" + pageId + "'"));
+            Points.Filter filter = Points.Filter.newBuilder()
+                    .addMust(Points.Condition.newBuilder()
+                            .setField(Points.FieldCondition.newBuilder()
+                                    .setKey("pageId")
+                                    .setMatch(Points.Match.newBuilder().setKeyword(pageId))))
+                    .build();
+            qdrantClient.deleteAsync(collectionName, filter).get(30, TimeUnit.SECONDS);
             log.info("Chunks für Seite '{}' gelöscht", pageId);
         } catch (Exception e) {
             log.warn("Chunks für pageId {} konnten nicht gelöscht werden: {}", pageId, e.getMessage());
