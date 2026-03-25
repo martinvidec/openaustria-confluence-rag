@@ -6,5 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record IngestionProperties(
     int chunkSize,
     int chunkOverlap,
-    int batchSize
+    int batchSize,
+    int parallelThreads,
+    int chunkTimeout
 ) {}

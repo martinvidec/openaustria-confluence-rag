@@ -6,10 +6,13 @@ import at.openaustria.confluencerag.crawler.client.ConfluenceClient;
 import at.openaustria.confluencerag.crawler.model.ConfluenceDocument;
 import at.openaustria.confluencerag.crawler.model.ConfluencePageResponse;
 import at.openaustria.confluencerag.web.JobProgress;
+import io.qdrant.client.QdrantClient;
+import io.qdrant.client.grpc.Points;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -30,6 +33,8 @@ public class SyncService {
     private final ConfluenceClient confluenceClient;
     private final ConfluenceProperties properties;
     private final IngestionService ingestionService;
+    private final QdrantClient qdrantClient;
+    private final String collectionName;
 
     public SyncService(CrawlerService crawlerService,
                        ChunkingService chunkingService,
@@ -37,7 +42,9 @@ public class SyncService {
                        SyncStateRepository syncStateRepository,
                        ConfluenceClient confluenceClient,
                        ConfluenceProperties properties,
-                       IngestionService ingestionService) {
+                       IngestionService ingestionService,
+                       QdrantClient qdrantClient,
+                       @Value("${spring.ai.vectorstore.qdrant.collection-name:confluence-chunks}") String collectionName) {
         this.crawlerService = crawlerService;
         this.chunkingService = chunkingService;
         this.vectorStore = vectorStore;
@@ -45,6 +52,8 @@ public class SyncService {
         this.confluenceClient = confluenceClient;
         this.properties = properties;
         this.ingestionService = ingestionService;
+        this.qdrantClient = qdrantClient;
+        this.collectionName = collectionName;
     }
 
     public SyncResult syncAll() {
@@ -181,7 +190,13 @@ public class SyncService {
 
     private void deleteChunksForPage(String pageId) {
         try {
-            vectorStore.delete(List.of("pageId == '" + pageId + "'"));
+            Points.Filter filter = Points.Filter.newBuilder()
+                    .addMust(Points.Condition.newBuilder()
+                            .setField(Points.FieldCondition.newBuilder()
+                                    .setKey("pageId")
+                                    .setMatch(Points.Match.newBuilder().setKeyword(pageId))))
+                    .build();
+            qdrantClient.deleteAsync(collectionName, filter).get(30, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Chunks für pageId {} konnten nicht gelöscht werden: {}", pageId, e.getMessage());
         }
