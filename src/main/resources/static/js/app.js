@@ -131,7 +131,7 @@ function renderAdminSpaces(statusMap) {
     allSpaces.forEach(space => {
         const state = statusMap[space.key];
         const lastSync = state && state.lastSync
-            ? new Date(state.lastSync).toLocaleString('de-AT')
+            ? new Date(state.lastSync * 1000).toLocaleString('de-AT')
             : 'Noch nie';
         const pageCount = state && state.knownPageIds
             ? state.knownPageIds.length
