@@ -22,7 +22,9 @@ spring:
 ingestion:
   chunk-size: ${CHUNK_SIZE:500}
   chunk-overlap: ${CHUNK_OVERLAP:50}
-  batch-size: ${BATCH_SIZE:20}
+  batch-size: ${BATCH_SIZE:50}
+  parallel-threads: ${INGESTION_PARALLEL_THREADS:2}
+  chunk-timeout: ${INGESTION_CHUNK_TIMEOUT:300}
 
 query:
   top-k: ${QUERY_TOP_K:10}

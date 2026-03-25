@@ -37,7 +37,7 @@ class ChunkingServiceTest {
 
     @BeforeEach
     void setUp() {
-        chunkingService = new ChunkingService(new IngestionProperties(500, 50, 20));
+        chunkingService = new ChunkingService(new IngestionProperties(500, 50, 50, 2, 300));
     }
 
     @Test

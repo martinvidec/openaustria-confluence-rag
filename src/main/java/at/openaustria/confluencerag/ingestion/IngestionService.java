@@ -8,6 +8,7 @@ import at.openaustria.confluencerag.web.JobProgress;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.grpc.Collections.Distance;
 import io.qdrant.client.grpc.Collections.VectorParams;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
@@ -20,16 +21,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 @Service
 public class IngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
-    private static final int CHUNK_TIMEOUT_SECONDS = 120;
     private static final int VECTOR_DIMENSION = 768;
     private final int batchSize;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final int chunkTimeoutSeconds;
+    private final ExecutorService executor;
     private final CrawlerService crawlerService;
     private final ChunkingService chunkingService;
     private final VectorStore vectorStore;
@@ -51,6 +53,23 @@ public class IngestionService {
         this.collectionName = collectionName;
         this.properties = properties;
         this.batchSize = ingestionProperties.batchSize();
+        this.chunkTimeoutSeconds = ingestionProperties.chunkTimeout();
+        this.executor = Executors.newFixedThreadPool(ingestionProperties.parallelThreads());
+        log.info("IngestionService konfiguriert: batchSize={}, parallelThreads={}, chunkTimeout={}s",
+                batchSize, ingestionProperties.parallelThreads(), chunkTimeoutSeconds);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     public IngestionResult ingestAll() {
@@ -147,41 +166,55 @@ public class IngestionService {
     }
 
     private int storeBatched(List<Document> chunks, Consumer<JobProgress> onProgress, int errors) {
-        int stored = 0;
+        List<List<Document>> batches = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i += batchSize) {
-            List<Document> batch = chunks.subList(i, Math.min(i + batchSize, chunks.size()));
-            try {
-                addWithTimeout(batch);
-                stored += batch.size();
-                log.info("Batch gespeichert: {}/{} Chunks",
-                        Math.min(i + batchSize, chunks.size()), chunks.size());
-            } catch (TimeoutException e) {
-                log.warn("Batch {}-{} Timeout ({}s), versuche einzeln",
-                        i, Math.min(i + batchSize, chunks.size()), CHUNK_TIMEOUT_SECONDS);
-                stored += storeIndividually(batch);
-            } catch (Exception e) {
-                log.warn("Batch {}-{} fehlgeschlagen, versuche einzeln: {}",
-                        i, Math.min(i + batchSize, chunks.size()), e.getMessage());
-                stored += storeIndividually(batch);
-            }
-            onProgress.accept(new JobProgress("STORING",
-                    String.format("%d/%d Chunks gespeichert", stored, chunks.size()),
-                    stored, chunks.size(), stored, errors, null));
+            batches.add(new ArrayList<>(chunks.subList(i, Math.min(i + batchSize, chunks.size()))));
         }
-        return stored;
+
+        log.info("Starte parallele Embedding-Verarbeitung: {} Batches à max {} Chunks",
+                batches.size(), batchSize);
+
+        AtomicInteger stored = new AtomicInteger(0);
+        AtomicInteger errorCount = new AtomicInteger(errors);
+        int totalChunks = chunks.size();
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (List<Document> batch : batches) {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                vectorStore.add(batch);
+                int current = stored.addAndGet(batch.size());
+                log.info("Batch gespeichert: {}/{} Chunks", current, totalChunks);
+            }, executor)
+            .orTimeout(chunkTimeoutSeconds, TimeUnit.SECONDS)
+            .exceptionally(ex -> {
+                Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
+                if (cause instanceof TimeoutException) {
+                    log.warn("Batch Timeout ({}s, {} Chunks), versuche einzeln",
+                            chunkTimeoutSeconds, batch.size());
+                } else {
+                    log.warn("Batch fehlgeschlagen ({} Chunks), versuche einzeln: {}",
+                            batch.size(), cause.getMessage());
+                }
+                stored.addAndGet(storeIndividually(batch));
+                return null;
+            })
+            .thenRun(() -> onProgress.accept(new JobProgress("STORING",
+                    String.format("%d/%d Chunks gespeichert", stored.get(), totalChunks),
+                    stored.get(), totalChunks, stored.get(), errorCount.get(), null)));
+            futures.add(future);
+        }
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return stored.get();
     }
 
     private int storeIndividually(List<Document> chunks) {
         int stored = 0;
         for (Document chunk : chunks) {
             try {
-                addWithTimeout(List.of(chunk));
+                vectorStore.add(List.of(chunk));
                 stored++;
-            } catch (TimeoutException e) {
-                log.error("Chunk Timeout ({}s, {} Zeichen, Seite: '{}')",
-                        CHUNK_TIMEOUT_SECONDS,
-                        chunk.getText().length(),
-                        chunk.getMetadata().getOrDefault("pageTitle", "?"));
             } catch (Exception e) {
                 log.error("Chunk übersprungen ({} Zeichen, Seite: '{}'): {}",
                         chunk.getText().length(),
@@ -190,18 +223,6 @@ public class IngestionService {
             }
         }
         return stored;
-    }
-
-    private void addWithTimeout(List<Document> docs) throws TimeoutException, Exception {
-        Future<?> future = executor.submit(() -> vectorStore.add(docs));
-        try {
-            future.get(CHUNK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            future.cancel(true);
-            throw e;
-        } catch (ExecutionException e) {
-            throw (Exception) e.getCause();
-        }
     }
 
     private void clearCollection() {
