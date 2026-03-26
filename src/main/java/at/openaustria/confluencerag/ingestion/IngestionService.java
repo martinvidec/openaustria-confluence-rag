@@ -189,20 +189,29 @@ public class IngestionService {
         for (List<Document> batch : batches) {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 vectorStore.add(batch);
-                int current = stored.addAndGet(batch.size());
-                log.info("Batch gespeichert: {}/{} Chunks", current, totalChunks);
             }, executor)
             .orTimeout(chunkTimeoutSeconds, TimeUnit.SECONDS)
-            .exceptionally(ex -> {
-                Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
-                if (cause instanceof TimeoutException) {
-                    log.warn("Batch Timeout ({}s, {} Chunks), versuche einzeln",
-                            chunkTimeoutSeconds, batch.size());
+            .handle((result, ex) -> {
+                if (ex != null) {
+                    Throwable cause = ex instanceof CompletionException ? ex.getCause() : ex;
+                    if (cause instanceof TimeoutException) {
+                        log.warn("Batch Timeout ({}s, {} Chunks), versuche einzeln",
+                                chunkTimeoutSeconds, batch.size());
+                    } else {
+                        log.warn("Batch fehlgeschlagen ({} Chunks), versuche einzeln: {}",
+                                batch.size(), cause.getMessage());
+                    }
+                    int individuallyStored = storeIndividually(batch);
+                    stored.addAndGet(individuallyStored);
+                    int failed = batch.size() - individuallyStored;
+                    if (failed > 0) {
+                        errorCount.addAndGet(failed);
+                        log.warn("{} Chunks konnten nicht gespeichert werden", failed);
+                    }
                 } else {
-                    log.warn("Batch fehlgeschlagen ({} Chunks), versuche einzeln: {}",
-                            batch.size(), cause.getMessage());
+                    int current = stored.addAndGet(batch.size());
+                    log.info("Batch gespeichert: {}/{} Chunks", current, totalChunks);
                 }
-                stored.addAndGet(storeIndividually(batch));
                 return null;
             })
             .thenRun(() -> onProgress.accept(new JobProgress("STORING",
