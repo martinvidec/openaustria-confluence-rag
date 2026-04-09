@@ -11,7 +11,7 @@ spring:
         options:
           temperature: 0.3
       embedding:
-        model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+        model: ${OLLAMA_EMBEDDING_MODEL:bge-m3}
     vectorstore:
       qdrant:
         host: ${QDRANT_HOST:localhost}
@@ -25,6 +25,7 @@ ingestion:
   batch-size: ${BATCH_SIZE:50}
   parallel-threads: ${INGESTION_PARALLEL_THREADS:2}
   chunk-timeout: ${INGESTION_CHUNK_TIMEOUT:300}
+  vector-dimension: ${VECTOR_DIMENSION:1024}
 
 query:
   top-k: ${QUERY_TOP_K:10}

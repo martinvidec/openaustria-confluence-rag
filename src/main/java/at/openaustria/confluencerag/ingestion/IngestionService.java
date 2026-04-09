@@ -29,9 +29,9 @@ import java.util.function.Consumer;
 public class IngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
-    private static final int VECTOR_DIMENSION = 768;
     private final int batchSize;
     private final int chunkTimeoutSeconds;
+    private final int vectorDimension;
     private final ExecutorService executor;
     private final CrawlerService crawlerService;
     private final ChunkingService chunkingService;
@@ -55,9 +55,10 @@ public class IngestionService {
         this.properties = properties;
         this.batchSize = ingestionProperties.batchSize();
         this.chunkTimeoutSeconds = ingestionProperties.chunkTimeout();
+        this.vectorDimension = ingestionProperties.vectorDimension();
         this.executor = Executors.newFixedThreadPool(ingestionProperties.parallelThreads());
-        log.info("IngestionService konfiguriert: batchSize={}, parallelThreads={}, chunkTimeout={}s",
-                batchSize, ingestionProperties.parallelThreads(), chunkTimeoutSeconds);
+        log.info("IngestionService konfiguriert: batchSize={}, parallelThreads={}, chunkTimeout={}s, vectorDimension={}",
+                batchSize, ingestionProperties.parallelThreads(), chunkTimeoutSeconds, vectorDimension);
     }
 
     @PreDestroy
@@ -278,7 +279,7 @@ public class IngestionService {
 
             qdrantClient.createCollectionAsync(collectionName,
                     VectorParams.newBuilder()
-                            .setSize(VECTOR_DIMENSION)
+                            .setSize(vectorDimension)
                             .setDistance(Distance.Cosine)
                             .build()
             ).get(30, TimeUnit.SECONDS);

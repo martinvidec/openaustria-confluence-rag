@@ -21,7 +21,10 @@ mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
 # Infrastructure
 docker compose up -d qdrant ollama           # Or use native Ollama if installed
 
-# App with Basic Auth (local Confluence test, default model: gemma3:4b)
+# First-time setup: pull embedding model (1.2 GB)
+docker exec openaustria-confluence-rag-ollama-1 ollama pull bge-m3
+
+# App with Basic Auth (local Confluence test, default chat model: gemma3:4b, embedding: bge-m3)
 CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=ds,OP \
   mvn spring-boot:run -DskipTests
 
@@ -35,7 +38,7 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 
 1. **Crawler** (`crawler/`) — `ConfluenceClient` (PAT or Basic auth, pagination, retry) → `ConfluenceHtmlConverter` (Jsoup XML parser, MacroHandler strategy pattern for PlantUML etc.) → `AttachmentTextExtractor` (Tika) → `CrawlerService` orchestrates per-space crawl into `ConfluenceDocument` records.
 
-2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 500 token/50 overlap) → `IngestionService` (parallel batch upsert to Qdrant, 50/batch, 2 threads) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default). Chunk deletion uses `QdrantClient.deleteAsync(filter)` directly (not `VectorStore.delete()` which only accepts IDs).
+2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 500 token/50 overlap) → `IngestionService` (parallel batch upsert to Qdrant, 50/batch, 2 threads, 1024-dim vectors for `bge-m3`) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default). Chunk deletion uses `QdrantClient.deleteAsync(filter)` directly (not `VectorStore.delete()` which only accepts IDs). Vector dimension is configurable via `ingestion.vector-dimension`.
 
 3. **Query** (`query/`) — `QueryService` (similarity search → context build → Ollama ChatClient) with space filtering via Qdrant FilterExpression. Streaming via `Flux<String>`.
 

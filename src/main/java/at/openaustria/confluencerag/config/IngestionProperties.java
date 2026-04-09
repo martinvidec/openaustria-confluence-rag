@@ -8,5 +8,6 @@ public record IngestionProperties(
     int chunkOverlap,
     int batchSize,
     int parallelThreads,
-    int chunkTimeout
+    int chunkTimeout,
+    int vectorDimension
 ) {}
