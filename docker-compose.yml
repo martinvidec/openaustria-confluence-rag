@@ -10,6 +10,7 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       QDRANT_HOST: qdrant
       QDRANT_GRPC_PORT: 6334
+      QUERY_RERANKER_URL: http://reranker:7997
       SYNC_STATE_FILE: /app/data/sync-state.json
     volumes:
       - app_data:/app/data
@@ -17,6 +18,8 @@ services:
       qdrant:
         condition: service_healthy
       ollama:
+        condition: service_started
+      reranker:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
@@ -55,7 +58,17 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
+  reranker:
+    image: michaelf34/infinity:latest
+    ports:
+      - "7997:7997"
+    command: ["v2", "--model-id", "BAAI/bge-reranker-v2-m3", "--port", "7997"]
+    volumes:
+      - reranker_cache:/app/.cache
+    restart: unless-stopped
+
 volumes:
   app_data:
   qdrant_data:
   ollama_data:
+  reranker_cache:

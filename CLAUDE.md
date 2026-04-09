@@ -18,8 +18,8 @@ mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
 ## Running Locally
 
 ```bash
-# Infrastructure
-docker compose up -d qdrant ollama           # Or use native Ollama if installed
+# Infrastructure (Qdrant + Ollama + Reranker)
+docker compose up -d qdrant ollama reranker
 
 # First-time setup: pull embedding model (1.2 GB)
 docker exec openaustria-confluence-rag-ollama-1 ollama pull bge-m3
@@ -27,6 +27,9 @@ docker exec openaustria-confluence-rag-ollama-1 ollama pull bge-m3
 # App with Basic Auth (local Confluence test, default chat model: gemma3:4b, embedding: bge-m3)
 CONFLUENCE_USERNAME=admin CONFLUENCE_PASSWORD=admin CONFLUENCE_SPACES=ds,OP \
   mvn spring-boot:run -DskipTests
+
+# Reranker can be disabled if container is not running
+QUERY_RERANKER_ENABLED=false mvn spring-boot:run -DskipTests
 
 # Local Confluence test instance
 docker compose -f docker-compose.test.yml up -d      # Confluence 8.5 on port 8090
@@ -40,7 +43,7 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 
 2. **Ingestion** (`ingestion/`) — `ChunkingService` (TokenTextSplitter, 500 token/50 overlap) → `IngestionService` (parallel batch upsert to Qdrant, 50/batch, 2 threads, 1024-dim vectors for `bge-m3`) → `SyncService` (CQL delta queries, deleted page detection, JSON state file) → `SyncScheduler` (cron, disabled by default). Chunk deletion uses `QdrantClient.deleteAsync(filter)` directly (not `VectorStore.delete()` which only accepts IDs). Vector dimension is configurable via `ingestion.vector-dimension`.
 
-3. **Query** (`query/`) — `QueryService` (similarity search → context build → Ollama ChatClient) with space filtering via Qdrant FilterExpression. Streaming via `Flux<String>`.
+3. **Query** (`query/`) — `QueryService` (similarity search → cross-encoder rerank via `RerankerService` → context build → Ollama ChatClient) with space filtering via Qdrant FilterExpression. Streaming via `Flux<String>`. `RerankerService` calls an external `michaelf34/infinity` container hosting `BAAI/bge-reranker-v2-m3`; falls back to vector order on errors and is toggleable via `query.reranker.enabled`.
 
 **Web layer** (`web/`) — `ChatController` (POST /api/chat, POST /api/chat/stream SSE, GET /api/spaces), `AdminController` (ingest/sync triggers). Frontend is vanilla HTML/CSS/JS in `src/main/resources/static/`.
 

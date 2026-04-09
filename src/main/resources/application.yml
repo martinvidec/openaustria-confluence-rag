@@ -28,8 +28,14 @@ ingestion:
   vector-dimension: ${VECTOR_DIMENSION:1024}
 
 query:
-  top-k: ${QUERY_TOP_K:10}
+  top-k: ${QUERY_TOP_K:5}
   similarity-threshold: ${QUERY_SIMILARITY_THRESHOLD:0.45}
+  reranker:
+    enabled: ${QUERY_RERANKER_ENABLED:true}
+    base-url: ${QUERY_RERANKER_URL:http://localhost:7997}
+    model: ${QUERY_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
+    candidate-count: ${QUERY_RERANKER_CANDIDATES:30}
+    timeout-seconds: ${QUERY_RERANKER_TIMEOUT:10}
 
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}
