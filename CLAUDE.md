@@ -59,6 +59,12 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 - Auth supports both PAT (`Authorization: Bearer`) and Basic Auth (`username:password`) — configured via `ConfluenceProperties`
 - Configuration via `ConfluenceProperties` record (`@ConfigurationProperties(prefix = "confluence")`)
 
+## Diagnostic Scripts
+
+Utility scripts under `scripts/` — see `scripts/README.md` for details.
+
+- `retrieval-quality-check.py` — runs a set of test queries against the ingested Qdrant collection and prints per-query top matches with scores. Use when comparing embedding models, calibrating thresholds, or debugging "the sources are off" reports. No dependencies beyond Python 3 + running Ollama/Qdrant.
+
 ## Language Note
 
 Documentation is in German. Code uses English identifiers.
