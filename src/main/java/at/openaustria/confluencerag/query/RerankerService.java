@@ -4,6 +4,7 @@ import at.openaustria.confluencerag.config.QueryProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -26,6 +27,7 @@ public class RerankerService {
     private final QueryProperties.RerankerProperties config;
     private final RestClient restClient;
 
+    @Autowired
     public RerankerService(QueryProperties queryProperties) {
         this.config = queryProperties.reranker();
 
