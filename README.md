@@ -8,11 +8,11 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 
 - **Confluence Crawler** — Extraktion via REST API mit PAT- oder Basic-Auth, inkl. PlantUML-Makros, Kommentare und PDF-Attachments
 - **Inkrementeller Sync** — Nur geänderte Seiten werden erneut verarbeitet (CQL-basiert)
-- **RAG-Pipeline** — Chunking mit Titel-/Label-Anreicherung, Overlap, Embedding und Similarity Search über Qdrant
-- **Keyword Re-Ranking** — Vektorsuche + Keyword-basierte Nachsortierung für präzise Ergebnisse in Single-Domain-Korpora
+- **RAG-Pipeline** — Chunking mit Titel-/Label-/Pfad-Anreicherung, Overlap, Embedding (`bge-m3`, multilingual) und Similarity Search über Qdrant
+- **Pluggable Reranker** — Drei Implementierungen über `Reranker`-Interface auswählbar: LLM-basiertes Listwise-Reranking via Ollama (Default, kein Extra-Container), externer Cross-Encoder via Infinity, oder NoOp-Passthrough
 - **Chat-Interface** — Streaming-Antworten mit Quellenangaben, Space-Filter und Modell-Anzeige
 - **Admin-Panel** — Ingest/Sync-Steuerung mit Live-Fortschrittsanzeige
-- **Vollständig On-Premise** — LLM und Embedding via Ollama, kein Cloud-Zwang
+- **Vollständig On-Premise** — LLM, Embedding und Reranker via Ollama, kein Cloud-Zwang, keine externen API-Aufrufe
 
 ## Tech Stack
 
@@ -23,7 +23,7 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 | HTML-Parsing | Jsoup |
 | PDF-Extraktion | Apache Tika |
 | VectorStore | Qdrant |
-| LLM & Embedding | Ollama (z.B. gemma3:4b + nomic-embed-text) |
+| LLM & Embedding | Ollama (Chat: gemma3:4b, Embedding: bge-m3, Reranker: qwen3:0.6b) |
 | Frontend | Vanilla HTML/CSS/JS (kein Node.js nötig) |
 | Infrastruktur | Docker Compose |
 
@@ -59,8 +59,9 @@ brew install --cask docker
 docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
-docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull gemma3:4b
+docker compose exec ollama ollama pull bge-m3        # Embedding (1.2 GB)
+docker compose exec ollama ollama pull gemma3:4b     # Chat (3.3 GB)
+docker compose exec ollama ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -81,8 +82,9 @@ qdrant &  # Startet auf Port 6333/6334
 # Ollama nativ
 brew install ollama
 ollama serve &  # Startet auf Port 11434
-ollama pull nomic-embed-text
-ollama pull gemma3:4b
+ollama pull bge-m3        # Embedding (1.2 GB)
+ollama pull gemma3:4b     # Chat (3.3 GB)
+ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -110,8 +112,9 @@ sudo usermod -aG docker $USER
 docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
-docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull gemma3:4b
+docker compose exec ollama ollama pull bge-m3        # Embedding (1.2 GB)
+docker compose exec ollama ollama pull gemma3:4b     # Chat (3.3 GB)
+docker compose exec ollama ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -133,8 +136,9 @@ curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-
 # Ollama nativ
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &  # Startet auf Port 11434
-ollama pull nomic-embed-text
-ollama pull gemma3:4b
+ollama pull bge-m3        # Embedding (1.2 GB)
+ollama pull gemma3:4b     # Chat (3.3 GB)
+ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -169,8 +173,9 @@ sudo usermod -aG docker $USER
 docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
-docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull gemma3:4b
+docker compose exec ollama ollama pull bge-m3        # Embedding (1.2 GB)
+docker compose exec ollama ollama pull gemma3:4b     # Chat (3.3 GB)
+docker compose exec ollama ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -191,8 +196,9 @@ curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-
 # Ollama nativ
 curl -fsSL https://ollama.com/install.sh | sh
 ollama serve &  # Startet auf Port 11434
-ollama pull nomic-embed-text
-ollama pull gemma3:4b
+ollama pull bge-m3        # Embedding (1.2 GB)
+ollama pull gemma3:4b     # Chat (3.3 GB)
+ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -219,8 +225,9 @@ winget install Docker.DockerDesktop
 docker compose up -d qdrant ollama
 
 # Ollama-Modelle laden
-docker compose exec ollama ollama pull nomic-embed-text
-docker compose exec ollama ollama pull gemma3:4b
+docker compose exec ollama ollama pull bge-m3        # Embedding (1.2 GB)
+docker compose exec ollama ollama pull gemma3:4b     # Chat (3.3 GB)
+docker compose exec ollama ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -243,8 +250,9 @@ setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot"
 # Ollama nativ
 winget install Ollama.Ollama
 ollama serve  # In separatem Terminal, startet auf Port 11434
-ollama pull nomic-embed-text
-ollama pull gemma3:4b
+ollama pull bge-m3        # Embedding (1.2 GB)
+ollama pull gemma3:4b     # Chat (3.3 GB)
+ollama pull qwen3:0.6b    # Reranker (522 MB)
 ```
 
 </details>
@@ -301,16 +309,20 @@ docker compose up -d qdrant ollama
 Via Docker:
 
 ```bash
-docker compose exec ollama ollama pull nomic-embed-text    # Embedding (erforderlich)
-docker compose exec ollama ollama pull gemma3:4b              # Chat (Default)
+docker compose exec ollama ollama pull bge-m3        # Embedding — multilingual, top-Tier auf DE (1.2 GB)
+docker compose exec ollama ollama pull gemma3:4b     # Chat — Default für Antwort-Generierung (3.3 GB)
+docker compose exec ollama ollama pull qwen3:0.6b    # Reranker — Listwise Rerank, optional (522 MB)
 ```
 
 Oder falls Ollama nativ installiert ist:
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull bge-m3
 ollama pull gemma3:4b
+ollama pull qwen3:0.6b
 ```
+
+> **Hinweis:** Der Reranker ist optional. Mit `QUERY_RERANKER_TYPE=none` wird die rohe Vektor-Reihenfolge benutzt und `qwen3:0.6b` muss nicht gepullt werden.
 
 ### 4. Anwendung starten
 
@@ -378,8 +390,8 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 | Variable | Beschreibung | Default |
 |---|---|---|
 | `OLLAMA_BASE_URL` | Ollama API URL | `http://localhost:11434` |
-| `OLLAMA_CHAT_MODEL` | Chat-Modell | `gemma3:4b` |
-| `OLLAMA_EMBEDDING_MODEL` | Embedding-Modell | `nomic-embed-text` |
+| `OLLAMA_CHAT_MODEL` | Chat-Modell für die Antwort-Generierung | `gemma3:4b` |
+| `OLLAMA_EMBEDDING_MODEL` | Embedding-Modell (multilingual) | `bge-m3` |
 
 ### Infrastruktur
 
@@ -388,15 +400,52 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
 | `QDRANT_HOST` | Qdrant Host | `localhost` |
 | `QDRANT_GRPC_PORT` | Qdrant gRPC Port | `6334` |
 
-### Ingestion & Query Tuning
+### Ingestion-Tuning
 
 | Variable | Beschreibung | Default |
 |---|---|---|
 | `CHUNK_SIZE` | Chunk-Größe in Tokens | `500` |
 | `CHUNK_OVERLAP` | Overlap zwischen Chunks in Tokens | `50` |
-| `BATCH_SIZE` | Batch-Größe für Qdrant-Upserts | `20` |
-| `QUERY_TOP_K` | Anzahl Ergebnisse nach Re-Ranking | `10` |
-| `QUERY_SIMILARITY_THRESHOLD` | Min. Cosine-Similarity für Kandidaten | `0.45` |
+| `BATCH_SIZE` | Batch-Größe für Qdrant-Upserts | `50` |
+| `INGESTION_PARALLEL_THREADS` | Parallele Embedding-Threads | `2` |
+| `INGESTION_CHUNK_TIMEOUT` | Timeout pro Batch in Sekunden | `300` |
+| `VECTOR_DIMENSION` | Dimension der Embedding-Vektoren (muss zum Modell passen) | `1024` |
+
+### Query-Tuning
+
+| Variable | Beschreibung | Default |
+|---|---|---|
+| `QUERY_TOP_K` | Anzahl Ergebnisse nach Reranking | `5` |
+| `QUERY_SIMILARITY_THRESHOLD` | Min. Cosine-Similarity für Kandidaten aus Qdrant | `0.45` |
+
+### Reranker
+
+Drei Modi via `@ConditionalOnProperty` bei Startup auswählbar — genau eine Bean ist aktiv:
+
+| Variable | Beschreibung | Default |
+|---|---|---|
+| `QUERY_RERANKER_TYPE` | `llm` \| `infinity` \| `none` | `llm` |
+
+**Bei `type=llm` (Default):** Listwise-Reranking via Ollama, kein extra Container.
+
+| Variable | Beschreibung | Default |
+|---|---|---|
+| `QUERY_RERANKER_LLM_URL` | Ollama-Endpoint für den Rerank-Call | `http://localhost:11434` |
+| `QUERY_RERANKER_LLM_MODEL` | Ollama-Modell für den Rerank | `qwen3:0.6b` |
+| `QUERY_RERANKER_LLM_CANDIDATES` | Anzahl Kandidaten die in den Reranker gehen | `15` |
+| `QUERY_RERANKER_LLM_TIMEOUT` | Timeout für den Rerank-Call (Sekunden) | `60` |
+| `QUERY_RERANKER_LLM_MAX_CHUNK` | Truncation pro Chunk im Prompt (Zeichen) | `500` |
+
+**Bei `type=infinity`:** Externer Cross-Encoder-Container ([`michaelf34/infinity`](https://github.com/michaelf34/infinity), bereits im `docker-compose.yml` als optionaler Block enthalten). Höhere Präzision, ~4.5 GB Image — sinnvoll wenn das Image in einer privaten Registry verfügbar ist.
+
+| Variable | Beschreibung | Default |
+|---|---|---|
+| `QUERY_RERANKER_INFINITY_URL` | URL des Infinity-Containers | `http://localhost:7997` |
+| `QUERY_RERANKER_INFINITY_MODEL` | Cross-Encoder-Modell | `BAAI/bge-reranker-v2-m3` |
+| `QUERY_RERANKER_INFINITY_CANDIDATES` | Anzahl Kandidaten | `30` |
+| `QUERY_RERANKER_INFINITY_TIMEOUT` | Timeout (Sekunden) | `10` |
+
+**Bei `type=none`:** Reranker deaktiviert, rohe Vektor-Reihenfolge wird verwendet.
 
 ## API-Endpunkte
 
@@ -424,34 +473,44 @@ Dann unter http://localhost:8090 den Setup-Wizard durchlaufen (Evaluierungs-Lize
                                                      ▼
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   Ollama      │◀───│  Ingestion        │◀───│ Chunking Pipeline │
-│  (Embedding)  │───▶│  Service          │───▶│ (Titel/Label/Pfad │
-└──────────────┘     └──────────────────┘     │  Anreicherung +   │
-                              │                │  Overlap)          │
-                              ▼                └──────────────────┘
-┌──────────────┐     ┌──────────────────┐     ┌──────────┐
-│   Ollama      │◀───│  Query Service    │◀───│  Qdrant  │
-│  (Chat LLM)  │───▶│  (Vektor-Suche +  │    │ VectorDB │
-└──────────────┘     │   Keyword Re-Rank)│    └──────────┘
-                      └───────┬──────────┘
-                              │
+│  (bge-m3)     │───▶│  Service          │───▶│ (Titel/Label/Pfad │
+└──────────────┘     │  (parallel batch) │    │  Anreicherung +   │
+                      └──────────────────┘     │  Overlap)         │
+                              │                 └──────────────────┘
                               ▼
-                      ┌──────────────────┐
-                      │   Chat Frontend   │
-                      │  (HTML/JS + SSE)  │
-                      └──────────────────┘
+                      ┌──────────┐
+                      │  Qdrant  │
+                      │ 1024-dim │
+                      └────┬─────┘
+                           │
+                           ▼
+┌──────────────┐     ┌────────────────────┐    ┌──────────────────┐
+│   Ollama      │◀───│  Query Service     │───▶│  Reranker (DI)    │
+│  (Chat LLM    │───▶│  (Vector Search →  │    │  - LlmListwise    │
+│  gemma3:4b)   │    │   Reranker → LLM)  │◀───│  - Infinity X-Enc │
+└──────────────┘     └─────────┬──────────┘    │  - NoOp           │
+                               │                └──────────────────┘
+                               ▼
+                       ┌──────────────────┐
+                       │   Chat Frontend   │
+                       │  (HTML/JS + SSE)  │
+                       └──────────────────┘
 ```
+
+Der `Reranker` ist ein Interface mit drei austauschbaren Implementierungen — die aktive Bean wird beim Startup über `@ConditionalOnProperty` ausgewählt (siehe [Konfiguration → Reranker](#reranker)).
 
 ## Projektstruktur
 
 ```
 src/main/java/at/openaustria/confluencerag/
-├── config/          # ConfluenceProperties, QueryProperties, Health Indicators, CORS
+├── config/          # ConfluenceProperties, IngestionProperties, QueryProperties, Health, CORS
 ├── crawler/         # CrawlerService, AttachmentTextExtractor
 │   ├── client/      # ConfluenceClient (REST API, Pagination, Retry)
 │   ├── converter/   # ConfluenceHtmlConverter, MacroHandlers (PlantUML etc.)
 │   └── model/       # DTOs (ConfluencePageResponse, ConfluenceDocument etc.)
-├── ingestion/       # ChunkingService, IngestionService, SyncService
-├── query/           # QueryService, DTOs (QueryRequest/Response, Source)
+├── ingestion/       # ChunkingService, IngestionService, SyncService, SyncScheduler
+├── query/           # QueryService, Reranker (interface) + 3 implementations,
+│                    #   QueryRequest/Response, Source
 └── web/             # ChatController, AdminController, GlobalExceptionHandler
 
 src/main/resources/
@@ -462,12 +521,20 @@ src/main/resources/
 docs/
 ├── Confluence_RAG_Konzept.md
 ├── MVP_Phasenplan.md
-└── specs/           # 13 Implementierungsspezifikationen + Analysen
+└── specs/           # Implementierungs-Specs + Roadmap-/Analyse-Dokumente
+
+scripts/
+├── generate-test-pages.py        # Erzeugt Test-Seiten im lokalen Confluence
+└── retrieval-quality-check.py    # Diagnose-Tool: Vector vs. Reranker side-by-side
 ```
+
+## Diagnose-Tools
+
+`scripts/retrieval-quality-check.py` führt eine konfigurierbare Test-Query-Liste gegen die ingestete Qdrant-Collection aus und zeigt pro Query die Top-K — wahlweise als reine Vektor-Suche, nach Rerank, oder side-by-side mit Rang-Änderungs-Pfeilen. Sehr nützlich beim Vergleichen von Embedding-Modellen, Threshold-Kalibrierung oder beim Spot-Check ob ein Reranker tatsächlich die richtigen Treffer hochzieht. Details: [`scripts/README.md`](scripts/README.md).
 
 ## Status
 
-MVP implementiert und funktionsfähig. Getestet mit Confluence 8.5 Data Center (Docker). 43 Unit-Tests.
+MVP implementiert, funktionsfähig und produktiv eingesetzt. Getestet mit Confluence 8.5 Data Center (Docker). 67 Unit-Tests.
 
 ## Lizenz
 
