@@ -10,19 +10,19 @@ permissions:
 
 jobs:
   release:
+    # Build happens inside a Maven+Temurin container to bypass the
+    # broken JDK tool-cache on the current hosted runners.
     runs-on: ubuntu-latest
+    container:
+      image: maven:3.9-eclipse-temurin-17
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        # Using 21 instead of 17 — the 17.0.18-8 build currently resolved
-        # by setup-java is broken ('Error loading java.security file').
-        # pom.xml still targets Java 17 bytecode via maven-compiler.
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
+      - name: Install zip (for assemble.sh windows archive)
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends zip
 
       - name: Build Fat JAR
         run: mvn -B package -DskipTests
