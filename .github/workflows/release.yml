@@ -22,30 +22,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug runner env
-        run: |
-          echo '--- env (java-related) ---'
-          env | grep -iE 'java|jdk|mvn|maven' || true
-          echo '--- /etc/environment ---'
-          cat /etc/environment || true
-          echo '--- java.security files present ---'
-          find /usr/lib/jvm /opt/hostedtoolcache/Java* /etc/java* 2>/dev/null -name 'java.security' | head -20 || true
-          echo '--- any pre-existing java on PATH ---'
-          which java || true
-          java -version 2>&1 || true
-
-      - name: Install JDK 17, Maven, zip
+      - name: Find a working JDK + Maven
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends \
-            openjdk-17-jdk-headless maven zip
-          echo '--- after install ---'
-          ls -la /usr/lib/jvm/ || true
-          ls -la /usr/lib/jvm/java-17-openjdk-amd64/conf/security/java.security || true
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-          $JAVA_HOME/bin/java -version
-          mvn -version
+          sudo apt-get install -y -qq --no-install-recommends maven zip
+          echo "=== Trying each pre-installed JDK with a Maven invocation ==="
+          for jh in /usr/lib/jvm/temurin-*-jdk-amd64; do
+            [ -d "$jh" ] || continue
+            name=$(basename "$jh")
+            echo "--- Testing $name ---"
+            export JAVA_HOME="$jh"
+            if "$jh/bin/java" -jar /usr/share/maven/lib/maven-embedder-*.jar -v >/tmp/out 2>&1; then
+              echo "  java exec: OK"
+            fi
+            if mvn -version >/tmp/out 2>&1; then
+              echo "  mvn -version: OK using $name"
+              tail -5 /tmp/out
+              echo "JAVA_HOME=$jh" >> $GITHUB_ENV
+              exit 0
+            else
+              echo "  mvn -version failed:"
+              head -3 /tmp/out
+            fi
+          done
+          echo "No pre-installed JDK works with Maven."
+          exit 1
 
       - name: Build Fat JAR
         run: mvn -B package -DskipTests
