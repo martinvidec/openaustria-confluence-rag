@@ -11,42 +11,16 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # actions/setup-java hits a broken JDK tool-cache on current runners
-    # ("Error loading java.security file"). We install JDK + Maven via
-    # apt directly and unset any Java env vars the runner may set that
-    # would interfere with JVM startup.
-    env:
-      JAVA_TOOL_OPTIONS: ''
-      _JAVA_OPTIONS: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find a working JDK + Maven
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends maven zip
-          echo "=== Trying each pre-installed JDK with a Maven invocation ==="
-          for jh in /usr/lib/jvm/temurin-*-jdk-amd64; do
-            [ -d "$jh" ] || continue
-            name=$(basename "$jh")
-            echo "--- Testing $name ---"
-            export JAVA_HOME="$jh"
-            if "$jh/bin/java" -jar /usr/share/maven/lib/maven-embedder-*.jar -v >/tmp/out 2>&1; then
-              echo "  java exec: OK"
-            fi
-            if mvn -version >/tmp/out 2>&1; then
-              echo "  mvn -version: OK using $name"
-              tail -5 /tmp/out
-              echo "JAVA_HOME=$jh" >> $GITHUB_ENV
-              exit 0
-            else
-              echo "  mvn -version failed:"
-              head -3 /tmp/out
-            fi
-          done
-          echo "No pre-installed JDK works with Maven."
-          exit 1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
 
       - name: Build Fat JAR
         run: mvn -B package -DskipTests
