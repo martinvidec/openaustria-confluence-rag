@@ -124,11 +124,16 @@ public class LlmListwiseReranker implements Reranker {
     }
 
     private String callOllama(String prompt) {
+        // num_predict must be high enough to allow "thinking" models like qwen3
+        // to emit their internal <think>...</think> block AND still produce the
+        // final JSON array. 64 tokens are eaten entirely by the thinking block
+        // on qwen3:0.6b, leaving the response empty. 1024 is comfortable for
+        // both thinking and non-thinking models.
         OllamaRequest req = new OllamaRequest(
                 config.model(),
                 prompt,
                 false,
-                new OllamaOptions(0.0, 0.1, 64));
+                new OllamaOptions(0.0, 0.1, 1024));
 
         OllamaResponse resp = restClient.post()
                 .uri("/api/generate")
