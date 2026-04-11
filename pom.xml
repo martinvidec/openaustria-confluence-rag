@@ -13,7 +13,7 @@
 
     <groupId>at.openaustria</groupId>
     <artifactId>confluence-rag</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
     <name>confluence-rag</name>
     <description>KI-gestütztes Q&amp;A über Confluence On-Premise Inhalte</description>
 
