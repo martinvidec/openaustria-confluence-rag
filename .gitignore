@@ -4,6 +4,9 @@ target/
 *.jar
 *.war
 
+# Packaging output
+dist/
+
 # Maven
 .mvn/wrapper/maven-wrapper.jar
 

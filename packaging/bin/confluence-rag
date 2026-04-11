@@ -1,0 +1,558 @@
+#!/bin/sh
+# Confluence RAG — CLI wrapper (macOS / Linux)
+#
+# Subcommands: init, doctor, start, stop, status, logs, config,
+# ingest, update, uninstall, version, help
+set -eu
+
+# Resolve the real path of this script so symlinks in ~/.local/bin work
+resolve_script() {
+    target="$1"
+    while [ -L "$target" ]; do
+        link=$(readlink "$target")
+        case "$link" in
+            /*) target="$link" ;;
+            *)  target="$(dirname "$target")/$link" ;;
+        esac
+    done
+    # Print parent dir of the resolved script
+    (cd "$(dirname "$target")" && pwd)
+}
+
+BIN_DIR=$(resolve_script "$0")
+INSTALL_DIR=$(cd "$BIN_DIR/.." && pwd)
+
+LIB_JAR="$INSTALL_DIR/lib/confluence-rag.jar"
+CONFIG_DIR="$INSTALL_DIR/config"
+CONFIG_FILE="$CONFIG_DIR/config.env"
+CONFIG_EXAMPLE="$CONFIG_DIR/config.env.example"
+DATA_DIR="$INSTALL_DIR/data"
+LOG_DIR="$INSTALL_DIR/logs"
+LOG_FILE="$LOG_DIR/confluence-rag.log"
+PID_FILE="$INSTALL_DIR/confluence-rag.pid"
+
+GITHUB_REPO="martinvidec/openaustria-confluence-rag"
+APP_PORT=8080
+APP_URL="http://localhost:$APP_PORT"
+REQUIRED_JAVA_MAJOR=17
+DEFAULT_MODELS="bge-m3 gemma3:4b qwen3:0.6b"
+
+# ------------------------------- helpers -----------------------------------
+
+c_red()    { printf '\033[31m%s\033[0m' "$1"; }
+c_green()  { printf '\033[32m%s\033[0m' "$1"; }
+c_yellow() { printf '\033[33m%s\033[0m' "$1"; }
+c_bold()   { printf '\033[1m%s\033[0m' "$1"; }
+
+die() { printf '%s %s\n' "$(c_red 'error:')" "$*" >&2; exit 1; }
+warn() { printf '%s %s\n' "$(c_yellow 'warn:')" "$*" >&2; }
+info() { printf '%s %s\n' "$(c_bold '>>')" "$*"; }
+
+require_config() {
+    [ -f "$CONFIG_FILE" ] || die "config not found. Run 'confluence-rag init' first."
+}
+
+load_config() {
+    require_config
+    # shellcheck disable=SC1090
+    set -a && . "$CONFIG_FILE" && set +a
+}
+
+ensure_dirs() {
+    mkdir -p "$DATA_DIR" "$LOG_DIR"
+}
+
+http_get_code() {
+    curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$1" 2>/dev/null || echo "000"
+}
+
+# ------------------------------- version -----------------------------------
+
+cmd_version() {
+    if [ -f "$INSTALL_DIR/VERSION" ]; then
+        cat "$INSTALL_DIR/VERSION"
+    else
+        echo "unknown"
+    fi
+}
+
+# ------------------------------- help --------------------------------------
+
+cmd_help() {
+    cat <<EOF
+Confluence RAG — $(cmd_version)
+
+Usage: confluence-rag <command> [options]
+
+Setup:
+  init          Interactive setup: writes config and optionally pulls models
+  doctor        Verify Java, Ollama, Qdrant, required models
+
+Running:
+  start         Start the app in the background
+  stop          Stop the running app (graceful, then forced after 30s)
+  status        Is the app running?
+  logs          Tail the log file (use --no-follow --tail N for static view)
+
+Operation:
+  ingest        Trigger a full re-ingest via /api/admin/ingest
+
+Config:
+  config        Print path to config.env
+  config edit   Open config.env in \$EDITOR (default: vi)
+
+Maintenance:
+  version       Show installed version
+  update        Download and install the latest release
+  uninstall     Remove the installation (with confirmation)
+  help          This message
+
+Paths:
+  install dir:  $INSTALL_DIR
+  config file:  $CONFIG_FILE
+  log file:     $LOG_FILE
+EOF
+}
+
+# ------------------------------- init --------------------------------------
+
+prompt_with_default() {
+    # $1 = prompt text, $2 = default
+    # Prompt goes to stderr so the caller's `$(...)` captures only the answer.
+    _p="$1"
+    _d="$2"
+    if [ -n "$_d" ]; then
+        printf '%s [%s]: ' "$_p" "$_d" >&2
+    else
+        printf '%s: ' "$_p" >&2
+    fi
+    read -r _a || _a=""
+    [ -z "$_a" ] && _a="$_d"
+    printf '%s' "$_a"
+}
+
+prompt_silent() {
+    # $1 = prompt, used for passwords/tokens
+    printf '%s: ' "$1" >&2
+    stty -echo 2>/dev/null || true
+    read -r _a || _a=""
+    stty echo 2>/dev/null || true
+    printf '\n' >&2
+    printf '%s' "$_a"
+}
+
+cmd_init() {
+    no_pull=0
+    for arg in "$@"; do
+        case "$arg" in
+            --no-pull) no_pull=1 ;;
+            *) die "unknown flag for init: $arg" ;;
+        esac
+    done
+
+    mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
+
+    if [ -f "$CONFIG_FILE" ]; then
+        printf 'A configuration already exists. Overwrite? [y/N]: '
+        read -r _a || _a=""
+        case "$_a" in y|Y|yes|YES) ;; *) info "Aborted."; return 0 ;; esac
+    fi
+
+    info "Setting up Confluence RAG — press Enter to accept defaults"
+    echo
+
+    base_url=$(prompt_with_default "Confluence Base URL" "http://localhost:8090")
+    auth=$(prompt_with_default "Auth method (pat|basic)" "pat")
+    pat=""; user=""; pass=""
+    case "$auth" in
+        pat)   pat=$(prompt_silent "Personal Access Token") ;;
+        basic) user=$(prompt_with_default "Username" "admin")
+               pass=$(prompt_silent "Password") ;;
+        *) die "Unknown auth method: $auth (must be pat or basic)" ;;
+    esac
+    spaces=$(prompt_with_default "Spaces (comma-separated)" "")
+    chat=$(prompt_with_default "Chat model" "gemma3:4b")
+    embed=$(prompt_with_default "Embedding model" "bge-m3")
+    rerank=$(prompt_with_default "Reranker (llm|infinity|none)" "llm")
+    rerank_model=""
+    if [ "$rerank" = "llm" ]; then
+        rerank_model=$(prompt_with_default "Reranker model" "qwen3:0.6b")
+    fi
+
+    cat >"$CONFIG_FILE" <<EOF
+# Confluence RAG — generated by 'confluence-rag init' on $(date)
+CONFLUENCE_BASE_URL=$base_url
+CONFLUENCE_PAT=$pat
+CONFLUENCE_USERNAME=$user
+CONFLUENCE_PASSWORD=$pass
+CONFLUENCE_SPACES=$spaces
+
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=$chat
+OLLAMA_EMBEDDING_MODEL=$embed
+
+QDRANT_HOST=localhost
+QDRANT_GRPC_PORT=6334
+VECTOR_DIMENSION=1024
+
+QUERY_RERANKER_TYPE=$rerank
+QUERY_RERANKER_LLM_MODEL=$rerank_model
+QUERY_RERANKER_LLM_URL=http://localhost:11434
+
+QUERY_TOP_K=5
+QUERY_SIMILARITY_THRESHOLD=0.45
+
+SYNC_STATE_FILE=$DATA_DIR/sync-state.json
+EOF
+    chmod 600 "$CONFIG_FILE"
+
+    echo
+    info "Configuration written to $CONFIG_FILE"
+    echo
+
+    if [ "$no_pull" -eq 0 ]; then
+        printf 'Pull required Ollama models now? (%s) [Y/n]: ' "$DEFAULT_MODELS"
+        read -r _a || _a=""
+        case "$_a" in n|N|no|NO) ;; *)
+            _rerank_pull=""
+            [ "$rerank" = "llm" ] && [ -n "$rerank_model" ] && _rerank_pull="$rerank_model"
+            for m in "$embed" "$chat" $_rerank_pull; do
+                if command -v ollama >/dev/null 2>&1; then
+                    info "ollama pull $m"
+                    ollama pull "$m" || warn "pull failed for $m (continue)"
+                else
+                    warn "ollama not found in PATH, skipping pull — install from https://ollama.com"
+                    break
+                fi
+            done
+            ;;
+        esac
+    fi
+
+    echo
+    info "Setup complete. Next steps:"
+    echo "  confluence-rag doctor"
+    echo "  confluence-rag start"
+    echo "  confluence-rag ingest"
+}
+
+# ------------------------------- doctor ------------------------------------
+
+check_java() {
+    if ! command -v java >/dev/null 2>&1; then
+        printf ' %s  Java not found\n' "$(c_red '✗')"
+        echo '      ↳ Install Java 17+:'
+        echo '        macOS:  brew install openjdk@17'
+        echo '        Linux:  apt/dnf install openjdk-17-jdk'
+        echo '        Or:     https://adoptium.net/'
+        return 1
+    fi
+    # Parse major version
+    ver=$(java -version 2>&1 | head -1 | awk -F '"' '{print $2}')
+    major=$(echo "$ver" | awk -F '.' '{print ($1=="1" ? $2 : $1)}')
+    if [ -z "$major" ] || [ "$major" -lt "$REQUIRED_JAVA_MAJOR" ]; then
+        printf ' %s  Java %s found, need %d+\n' "$(c_red '✗')" "$ver" "$REQUIRED_JAVA_MAJOR"
+        return 1
+    fi
+    printf ' %s  Java 17+ (%s)\n' "$(c_green '✓')" "$ver"
+    return 0
+}
+
+check_ollama() {
+    load_config
+    url="${OLLAMA_BASE_URL:-http://localhost:11434}"
+    code=$(http_get_code "$url/api/tags")
+    if [ "$code" != "200" ]; then
+        printf ' %s  Ollama not reachable at %s\n' "$(c_red '✗')" "$url"
+        echo '      ↳ Install: https://ollama.com/download'
+        echo '      ↳ Start:   ollama serve'
+        return 1
+    fi
+    printf ' %s  Ollama reachable (%s)\n' "$(c_green '✓')" "$url"
+
+    # Check models
+    tags=$(curl -s --max-time 5 "$url/api/tags" 2>/dev/null || echo '{}')
+    ok=0
+    for m in "${OLLAMA_EMBEDDING_MODEL:-bge-m3}" "${OLLAMA_CHAT_MODEL:-gemma3:4b}"; do
+        if echo "$tags" | grep -q "\"$m"; then
+            printf '      %s  %s available\n' "$(c_green '✓')" "$m"
+        else
+            printf '      %s  %s missing — run: ollama pull %s\n' "$(c_red '✗')" "$m" "$m"
+            ok=1
+        fi
+    done
+    if [ "${QUERY_RERANKER_TYPE:-llm}" = "llm" ]; then
+        rm="${QUERY_RERANKER_LLM_MODEL:-qwen3:0.6b}"
+        if echo "$tags" | grep -q "\"$rm"; then
+            printf '      %s  %s available (reranker)\n' "$(c_green '✓')" "$rm"
+        else
+            printf '      %s  %s missing — run: ollama pull %s\n' "$(c_red '✗')" "$rm" "$rm"
+            ok=1
+        fi
+    fi
+    return "$ok"
+}
+
+check_qdrant() {
+    load_config
+    host="${QDRANT_HOST:-localhost}"
+    url="http://$host:6333"
+    code=$(http_get_code "$url/healthz")
+    if [ "$code" != "200" ]; then
+        printf ' %s  Qdrant not reachable at %s\n' "$(c_red '✗')" "$url"
+        echo '      ↳ Install: https://qdrant.tech/documentation/quick-start/'
+        echo '      ↳ Or via Docker: docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant'
+        return 1
+    fi
+    printf ' %s  Qdrant reachable (%s)\n' "$(c_green '✓')" "$url"
+    return 0
+}
+
+check_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        printf ' %s  Config present (%s)\n' "$(c_green '✓')" "$CONFIG_FILE"
+        return 0
+    fi
+    printf ' %s  Config missing — run: confluence-rag init\n' "$(c_red '✗')"
+    return 1
+}
+
+cmd_doctor() {
+    rc=0
+    check_java   || rc=1
+    check_config || rc=1
+    if [ -f "$CONFIG_FILE" ]; then
+        check_ollama || rc=1
+        check_qdrant || rc=1
+    fi
+    echo
+    if [ "$rc" -eq 0 ]; then
+        printf '%s All checks passed.\n' "$(c_green '✓')"
+    else
+        printf '%s Some checks failed — see above.\n' "$(c_red '✗')"
+    fi
+    return "$rc"
+}
+
+# ------------------------------- start/stop --------------------------------
+
+is_running() {
+    [ -f "$PID_FILE" ] || return 1
+    pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+cmd_start() {
+    load_config
+    ensure_dirs
+
+    if is_running; then
+        pid=$(cat "$PID_FILE")
+        info "Already running (pid $pid)"
+        return 0
+    fi
+
+    command -v java >/dev/null 2>&1 || die "java not found — install Java 17+ first"
+
+    info "Starting confluence-rag ..."
+    # shellcheck disable=SC2086
+    nohup java -jar "$LIB_JAR" >"$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+
+    # Wait up to 60s for the HTTP endpoint to come up
+    i=0
+    while [ "$i" -lt 30 ]; do
+        sleep 2
+        i=$((i + 1))
+        code=$(http_get_code "$APP_URL/api/spaces")
+        if [ "$code" = "200" ]; then
+            info "Started. $(c_bold "$APP_URL")  (pid $(cat "$PID_FILE"))"
+            return 0
+        fi
+        if ! is_running; then
+            die "Process exited during startup. Check $LOG_FILE"
+        fi
+    done
+    warn "App started but /api/spaces did not respond within 60s — check $LOG_FILE"
+    return 0
+}
+
+cmd_stop() {
+    if ! is_running; then
+        info "Not running."
+        rm -f "$PID_FILE"
+        return 0
+    fi
+    pid=$(cat "$PID_FILE")
+    info "Stopping pid $pid ..."
+    kill "$pid" 2>/dev/null || true
+    i=0
+    while [ "$i" -lt 30 ] && kill -0 "$pid" 2>/dev/null; do
+        sleep 1
+        i=$((i + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        warn "Graceful shutdown timeout, sending KILL"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    info "Stopped."
+}
+
+cmd_status() {
+    if is_running; then
+        pid=$(cat "$PID_FILE")
+        code=$(http_get_code "$APP_URL/api/spaces")
+        if [ "$code" = "200" ]; then
+            printf '%s running — pid %s, %s\n' "$(c_green '✓')" "$pid" "$APP_URL"
+        else
+            printf '%s process alive but HTTP not responding (pid %s)\n' "$(c_yellow '?')" "$pid"
+        fi
+    else
+        printf '%s not running\n' "$(c_red '✗')"
+        return 1
+    fi
+}
+
+# ------------------------------- logs --------------------------------------
+
+cmd_logs() {
+    tail_n=50
+    follow=1
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --tail) tail_n="$2"; shift 2 ;;
+            --tail=*) tail_n="${1#--tail=}"; shift ;;
+            --no-follow) follow=0; shift ;;
+            *) die "unknown flag for logs: $1" ;;
+        esac
+    done
+    [ -f "$LOG_FILE" ] || die "no log file yet — has the app been started?"
+    if [ "$follow" -eq 1 ]; then
+        tail -n "$tail_n" -f "$LOG_FILE"
+    else
+        tail -n "$tail_n" "$LOG_FILE"
+    fi
+}
+
+# ------------------------------- config ------------------------------------
+
+cmd_config() {
+    sub="${1:-}"
+    case "$sub" in
+        "") echo "$CONFIG_FILE" ;;
+        edit)
+            require_config
+            "${EDITOR:-vi}" "$CONFIG_FILE"
+            ;;
+        *) die "unknown config sub-command: $sub" ;;
+    esac
+}
+
+# ------------------------------- ingest ------------------------------------
+
+cmd_ingest() {
+    if ! is_running; then
+        die "app is not running — run 'confluence-rag start' first"
+    fi
+    info "Triggering POST $APP_URL/api/admin/ingest"
+    curl -sS -X POST "$APP_URL/api/admin/ingest" && echo
+}
+
+# ------------------------------- update ------------------------------------
+
+cmd_update() {
+    info "Fetching latest release info from GitHub ..."
+    api="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+    json=$(curl -fsSL "$api" 2>/dev/null) || die "cannot reach GitHub API"
+    latest_tag=$(echo "$json" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    [ -n "$latest_tag" ] || die "cannot parse latest tag"
+
+    current=$(cmd_version)
+    info "Current: $current  →  latest: $latest_tag"
+
+    if [ "$current" = "${latest_tag#v}" ] || [ "$current" = "$latest_tag" ]; then
+        info "Already up to date."
+        return 0
+    fi
+
+    asset_url=$(echo "$json" | grep -o '"browser_download_url": *"[^"]*-unix.tar.gz"' \
+        | head -1 | sed 's/.*": *"\([^"]*\)".*/\1/')
+    [ -n "$asset_url" ] || die "no unix archive found in release $latest_tag"
+
+    tmp=$(mktemp -d)
+    info "Downloading $asset_url"
+    curl -fsSL "$asset_url" -o "$tmp/update.tar.gz" || die "download failed"
+    (cd "$tmp" && tar xzf update.tar.gz)
+    inner=$(find "$tmp" -maxdepth 1 -type d -name 'confluence-rag-*' | head -1)
+    [ -d "$inner" ] || die "unexpected archive layout"
+
+    was_running=0
+    if is_running; then
+        was_running=1
+        cmd_stop
+    fi
+
+    info "Updating installation ..."
+    cp "$inner/lib/confluence-rag.jar" "$LIB_JAR"
+    cp "$inner/bin/confluence-rag" "$BIN_DIR/confluence-rag"
+    chmod +x "$BIN_DIR/confluence-rag"
+    [ -f "$inner/VERSION" ] && cp "$inner/VERSION" "$INSTALL_DIR/VERSION"
+    rm -rf "$tmp"
+
+    info "Updated to $latest_tag"
+    if [ "$was_running" -eq 1 ]; then
+        cmd_start
+    fi
+}
+
+# ------------------------------- uninstall ---------------------------------
+
+cmd_uninstall() {
+    force=0
+    [ "${1:-}" = "--yes" ] && force=1
+
+    if [ "$force" -eq 0 ]; then
+        printf 'Remove %s and all data/logs? [y/N]: ' "$INSTALL_DIR"
+        read -r _a || _a=""
+        case "$_a" in y|Y|yes|YES) ;; *) info "Aborted."; return 0 ;; esac
+    fi
+
+    is_running && cmd_stop || true
+
+    # Remove symlink in ~/.local/bin if present and pointing at us
+    for candidate in \
+        "$HOME/.local/bin/confluence-rag" \
+        "/usr/local/bin/confluence-rag"; do
+        if [ -L "$candidate" ]; then
+            tgt=$(readlink "$candidate")
+            case "$tgt" in
+                *"$INSTALL_DIR"*) rm -f "$candidate"; info "removed $candidate" ;;
+            esac
+        fi
+    done
+
+    rm -rf "$INSTALL_DIR"
+    info "Uninstalled."
+}
+
+# ------------------------------- dispatch ----------------------------------
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    init)       cmd_init "$@" ;;
+    doctor)     cmd_doctor ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    status)     cmd_status ;;
+    logs)       cmd_logs "$@" ;;
+    config)     cmd_config "$@" ;;
+    ingest)     cmd_ingest ;;
+    update)     cmd_update ;;
+    uninstall)  cmd_uninstall "$@" ;;
+    version|-V|--version) cmd_version ;;
+    help|-h|--help|"") cmd_help ;;
+    *) die "unknown command: $cmd  (try 'confluence-rag help')" ;;
+esac
