@@ -27,16 +27,58 @@ KI-gestütztes Q&A über Confluence On-Premise Inhalte. Extrahiert Seiten, Komme
 | Frontend | Vanilla HTML/CSS/JS (kein Node.js nötig) |
 | Infrastruktur | Docker Compose |
 
-## Voraussetzungen
+## Quick Install (Bare-Metal)
+
+Für ein lokales Bare-Metal-Setup ohne Docker und ohne Repo-Clone — eine Zeile, danach eine `confluence-rag`-CLI im PATH:
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/martinvidec/openaustria-confluence-rag/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/martinvidec/openaustria-confluence-rag/main/install.ps1 | iex
+```
+
+Nach der Installation:
+
+```bash
+confluence-rag init        # interaktives Setup + lädt Ollama-Modelle
+confluence-rag doctor      # prüft Java, Ollama, Qdrant, Modelle
+confluence-rag start       # startet im Hintergrund
+confluence-rag ingest      # triggert Voll-Ingest
+# → http://localhost:8080
+```
+
+Weitere Subcommands: `stop`, `status`, `logs`, `config`, `update`, `uninstall`, `help`.
+
+**Voraussetzungen** (nicht vom Installer mitinstalliert — `confluence-rag doctor` prüft und zeigt Install-Hinweise):
+
+- Java 17+ — [adoptium.net](https://adoptium.net/)
+- Ollama — [ollama.com/download](https://ollama.com/download)
+- Qdrant — [qdrant.tech/quick-start](https://qdrant.tech/documentation/quick-start/)
+
+Die App wird nach `~/.confluence-rag/` (macOS/Linux) bzw. `%LOCALAPPDATA%\confluence-rag\` (Windows) installiert. `confluence-rag uninstall` entfernt alles wieder sauber.
+
+> **Hinweis:** Die Install-Scripts sind im Repo öffentlich einsehbar ([install.sh](install.sh), [install.ps1](install.ps1)). Wenn du `curl | sh` nicht blind ausführen willst: erst das Script mit `curl -fsSL ... -o install.sh` herunterladen, inspizieren, dann ausführen.
+
+---
+
+## Voraussetzungen (Entwicklung / Docker-Compose)
+
+Wenn du am Code entwickeln willst oder lieber das Repo klonst und Docker Compose nutzt:
 
 - Java 17+
 - Maven 3.8+
-- Docker + Docker Compose
+- Docker + Docker Compose (optional)
 - Confluence On-Premise (5.5+) mit PAT oder Basic Auth
 - GPU empfohlen (für Ollama), CPU funktioniert auch
 - Mind. 8 GB RAM (16 GB empfohlen für größere LLM-Modelle)
 
-## Installation
+## Installation (Manuell)
 
 Es gibt zwei Varianten: **Mit Docker** (empfohlen, einfacher) oder **ohne Docker** (alle Dienste nativ). Die App selbst ist in beiden Fällen eine Java-Anwendung.
 
@@ -526,6 +568,19 @@ docs/
 scripts/
 ├── generate-test-pages.py        # Erzeugt Test-Seiten im lokalen Confluence
 └── retrieval-quality-check.py    # Diagnose-Tool: Vector vs. Reranker side-by-side
+
+packaging/
+├── bin/
+│   ├── confluence-rag            # CLI-Wrapper (macOS/Linux)
+│   ├── confluence-rag.cmd        # Windows-Batch-Wrapper
+│   └── confluence-rag.ps1        # PowerShell-Implementierung
+├── templates/
+│   ├── config.env.example        # Config-Template (von `init` ausgefüllt)
+│   └── README.txt                # Archive-internes README
+└── assemble.sh                   # Baut Release-Archive aus target/*.jar
+
+install.sh                        # Quick-Install für macOS/Linux (curl | sh)
+install.ps1                       # Quick-Install für Windows (irm | iex)
 ```
 
 ## Diagnose-Tools

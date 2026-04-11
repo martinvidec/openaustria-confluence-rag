@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build Fat JAR
+        run: mvn -B package -DskipTests
+
+      - name: Assemble distribution archives
+        run: ./packaging/assemble.sh "${GITHUB_REF_NAME}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/confluence-rag-*-unix.tar.gz
+            dist/confluence-rag-*-windows.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
