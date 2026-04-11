@@ -50,11 +50,17 @@ Wechsel von `nomic-embed-text` (768 dim, Englisch-optimiert) auf `bge-m3` (1024 
 - Bei abstrakten / kompositorischen Queries bleibt der Spread eng (0.04–0.06) — das Single-Domain-Problem ist nicht verschwunden, nur abgemildert
 - Titel-exakte Treffer werden manchmal von thematisch umgebenden Seiten überranked (Admin API, CORS) → Cross-Encoder würde hier helfen
 
-### 2.2 Cross-Encoder Reranker (PR #35, Code fertig)
+### 2.2 Cross-Encoder Reranker (PR #35, Code als alternative Implementierung)
 
-`RerankerService` ruft einen externen `michaelf34/infinity` Container mit `BAAI/bge-reranker-v2-m3` auf. Hat sauberen Fallback auf Vektor-Reihenfolge bei HTTP-Fehlern oder wenn deaktiviert (`query.reranker.enabled=false`).
+`RerankerService` rief ursprünglich einen externen `michaelf34/infinity` Container mit `BAAI/bge-reranker-v2-m3` auf (Spec 16).
 
-Aktuell mangels Docker-Netzwerk nicht deployed — Code ist aber getestet (7 Unit-Tests) und gemerged.
+**Architektur-Pivot 2026-04-11 (Spec 18, PR #40):** Auf den produktiven Zielsystemen ist Docker Hub gesperrt und das Image (~4.5 GB) ist nicht zuverlässig pullbar. Die Anforderung lautet "Reranker unter eigener Kontrolle". Konsequenz:
+
+- **Neuer Default:** `LlmListwiseReranker` — nutzt Ollama mit einem kleinen LLM (qwen3:0.6b o.ä.) für Listwise-Reranking in einem einzigen Call. Kein neuer Container, keine Hub-Abhängigkeit.
+- **Alte Implementierung erhalten:** Der Infinity-Code wurde nicht weggeworfen, sondern als `InfinityCrossEncoderReranker` über das neue `Reranker`-Interface erreichbar gemacht. Aktivierbar via `query.reranker.type=infinity` für Umgebungen wo der Container verfügbar ist.
+- **Drittes Mode:** `NoOpReranker` (`type=none`) als sauberer Disable-Pfad ohne Wenn-Abfragen.
+
+Bean-Auswahl beim Start via `@ConditionalOnProperty`. `QueryService` injiziert nur das Interface und weiß nicht welche Implementierung aktiv ist.
 
 ---
 

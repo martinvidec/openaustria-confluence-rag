@@ -10,7 +10,10 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       QDRANT_HOST: qdrant
       QDRANT_GRPC_PORT: 6334
-      QUERY_RERANKER_URL: http://reranker:7997
+      # Reranker default ist 'llm' (nutzt Ollama, kein extra Container).
+      # Für die Infinity-Variante: QUERY_RERANKER_TYPE=infinity setzen und
+      # QUERY_RERANKER_INFINITY_URL=http://reranker:7997, plus den reranker-Service unten einkommentieren.
+      QUERY_RERANKER_LLM_URL: http://ollama:11434
       SYNC_STATE_FILE: /app/data/sync-state.json
     volumes:
       - app_data:/app/data
@@ -18,8 +21,6 @@ services:
       qdrant:
         condition: service_healthy
       ollama:
-        condition: service_started
-      reranker:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
@@ -58,17 +59,22 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-  reranker:
-    image: michaelf34/infinity:latest
-    ports:
-      - "7997:7997"
-    command: ["v2", "--model-id", "BAAI/bge-reranker-v2-m3", "--port", "7997"]
-    volumes:
-      - reranker_cache:/app/.cache
-    restart: unless-stopped
+  # Optionaler Cross-Encoder Reranker (Alternative zum Default-LLM-Reranker).
+  # Aktivieren via QUERY_RERANKER_TYPE=infinity. Image ist groß (~4.5 GB),
+  # nur sinnvoll wenn Docker Hub bzw. ein Mirror-Image verfügbar ist.
+  # Auf Zielsystemen mit privater Registry: vorher in die eigene Registry pushen.
+  #
+  # reranker:
+  #   image: michaelf34/infinity:latest
+  #   ports:
+  #     - "7997:7997"
+  #   command: ["v2", "--model-id", "BAAI/bge-reranker-v2-m3", "--port", "7997"]
+  #   volumes:
+  #     - reranker_cache:/app/.cache
+  #   restart: unless-stopped
 
 volumes:
   app_data:
   qdrant_data:
   ollama_data:
-  reranker_cache:
+  # reranker_cache:

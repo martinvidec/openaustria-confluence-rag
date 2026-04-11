@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class RerankerServiceTest {
+class InfinityCrossEncoderRerankerTest {
 
     private HttpServer server;
     private String baseUrl;
@@ -35,15 +35,19 @@ class RerankerServiceTest {
         server.stop(0);
     }
 
-    private QueryProperties props(boolean enabled, int candidateCount) {
+    private QueryProperties props(int candidateCount) {
         return new QueryProperties(5, 0.45,
                 new QueryProperties.RerankerProperties(
-                        enabled, baseUrl, "BAAI/bge-reranker-v2-m3", candidateCount, 5));
+                        "infinity",
+                        new QueryProperties.LlmRerankerProperties(
+                                "http://localhost:11434", "qwen3:0.6b", 15, 60, 500),
+                        new QueryProperties.InfinityRerankerProperties(
+                                baseUrl, "BAAI/bge-reranker-v2-m3", candidateCount, 5)));
     }
 
-    private RerankerService serviceFor(QueryProperties properties) {
+    private InfinityCrossEncoderReranker serviceFor(QueryProperties properties) {
         RestClient client = RestClient.builder().baseUrl(baseUrl).build();
-        return new RerankerService(properties, client);
+        return new InfinityCrossEncoderReranker(properties, client);
     }
 
     private Document doc(String title, String text) {
@@ -70,7 +74,7 @@ class RerankerServiceTest {
             }
         });
 
-        RerankerService service = serviceFor(props(true, 30));
+        InfinityCrossEncoderReranker service = serviceFor(props(30));
         List<Document> candidates = List.of(
                 doc("Page A", "first text"),
                 doc("Page B", "second text"),
@@ -101,7 +105,7 @@ class RerankerServiceTest {
             }
         });
 
-        RerankerService service = serviceFor(props(true, 30));
+        InfinityCrossEncoderReranker service = serviceFor(props(30));
         List<Document> candidates = List.of(
                 doc("A", "x"), doc("B", "y"), doc("C", "z"));
 
@@ -121,7 +125,7 @@ class RerankerServiceTest {
             exchange.close();
         });
 
-        RerankerService service = serviceFor(props(true, 30));
+        InfinityCrossEncoderReranker service = serviceFor(props(30));
         List<Document> candidates = List.of(
                 doc("A", "x"), doc("B", "y"), doc("C", "z"));
 
@@ -135,27 +139,8 @@ class RerankerServiceTest {
     }
 
     @Test
-    void rerank_skipsServerCall_whenDisabled() {
-        AtomicInteger calls = new AtomicInteger();
-        server.createContext("/rerank", exchange -> {
-            calls.incrementAndGet();
-            exchange.sendResponseHeaders(200, -1);
-            exchange.close();
-        });
-
-        RerankerService service = serviceFor(props(false, 30));
-        List<Document> candidates = List.of(doc("A", "x"), doc("B", "y"));
-
-        List<Document> result = service.rerank("q", candidates, 5);
-
-        assertEquals(0, calls.get());
-        assertEquals(2, result.size());
-        assertEquals("A", result.get(0).getMetadata().get("pageTitle"));
-    }
-
-    @Test
     void rerank_returnsEmptyList_forEmptyInput() {
-        RerankerService service = serviceFor(props(true, 30));
+        InfinityCrossEncoderReranker service = serviceFor(props(30));
         List<Document> result = service.rerank("q", List.of(), 5);
         assertTrue(result.isEmpty());
     }
@@ -177,7 +162,7 @@ class RerankerServiceTest {
             }
         });
 
-        RerankerService service = serviceFor(props(true, 30));
+        InfinityCrossEncoderReranker service = serviceFor(props(30));
         List<Document> candidates = List.of(doc("A", "x"), doc("B", "y"));
 
         List<Document> result = service.rerank("q", candidates, 5);
@@ -188,7 +173,7 @@ class RerankerServiceTest {
 
     @Test
     void candidateCount_returnsConfiguredValue() {
-        RerankerService service = serviceFor(props(true, 42));
+        InfinityCrossEncoderReranker service = serviceFor(props(42));
         assertEquals(42, service.candidateCount());
     }
 }

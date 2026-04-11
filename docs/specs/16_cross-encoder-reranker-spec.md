@@ -1,7 +1,13 @@
 # Spec: Cross-Encoder Reranker
 
+> **⚠️ SUPERSEDED durch [Spec 18: LLM-basiertes Listwise-Reranking](18_llm-listwise-reranker-spec.md) (2026-04-11)**
+>
+> Diese Spec hat einen externen `michaelf34/infinity` Container vorgesehen. Auf den produktiven Zielsystemen ist Docker Hub gesperrt und das Image (~4.5 GB) ist nicht zuverlässig pullbar. Spec 18 ersetzt diesen Ansatz durch LLM-basiertes Listwise-Reranking via Ollama (kein neuer Container, kein Hub-Zugriff).
+>
+> Der hier spezifizierte Code aus PR #35 wird **nicht entfernt**, sondern als alternative Implementierung (`InfinityCrossEncoderReranker`, aktivierbar via `query.reranker.type=infinity`) erhalten — siehe Spec 18.
+
 **Datum:** 2026-04-09
-**Status:** Spec
+**Status:** Superseded by Spec 18
 **Betroffene Dateien:**
 - `src/main/java/at/openaustria/confluencerag/query/QueryService.java`
 - `src/main/java/at/openaustria/confluencerag/query/RerankerService.java` (**neu**)

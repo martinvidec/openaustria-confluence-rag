@@ -52,14 +52,14 @@ public class QueryService {
     private final VectorStore vectorStore;
     private final ChatClient chatClient;
     private final QueryProperties queryProperties;
-    private final RerankerService rerankerService;
+    private final Reranker reranker;
 
     public QueryService(VectorStore vectorStore, ChatClient.Builder chatClientBuilder,
-                        QueryProperties queryProperties, RerankerService rerankerService) {
+                        QueryProperties queryProperties, Reranker reranker) {
         this.vectorStore = vectorStore;
         this.chatClient = chatClientBuilder.build();
         this.queryProperties = queryProperties;
-        this.rerankerService = rerankerService;
+        this.reranker = reranker;
     }
 
     public QueryResponse query(QueryRequest request) {
@@ -67,7 +67,6 @@ public class QueryService {
         log.info("Query: \"{}\" (Filter: {})", request.question(), request.spaceFilter());
 
         List<Document> relevantDocs = searchRelevantDocs(request);
-        log.info("Similarity Search: {} Ergebnisse", relevantDocs.size());
 
         List<Source> sources = extractSources(relevantDocs);
         String context = buildContext(relevantDocs);
@@ -101,10 +100,9 @@ public class QueryService {
     }
 
     private List<Document> searchRelevantDocs(QueryRequest request) {
-        // Fetch a candidate set for cross-encoder reranking, then return top-K.
-        // The reranker provides much higher precision than the previous keyword
-        // heuristic, so a smaller candidate set is sufficient.
-        int fetchK = Math.max(queryProperties.topK(), rerankerService.candidateCount());
+        // Fetch a candidate set sized to the active reranker's needs,
+        // then let the reranker reorder them and return the top-K.
+        int fetchK = Math.max(queryProperties.topK(), reranker.candidateCount());
         SearchRequest.Builder searchBuilder = SearchRequest.builder()
                 .query(request.question())
                 .topK(fetchK)
@@ -122,7 +120,11 @@ public class QueryService {
         }
 
         List<Document> candidates = vectorStore.similaritySearch(searchBuilder.build());
-        return rerankerService.rerank(request.question(), candidates, queryProperties.topK());
+        log.info("Vektor-Suche: {} Kandidaten (fetchK={}, threshold={})",
+                candidates.size(), fetchK, queryProperties.similarityThreshold());
+        List<Document> reranked = reranker.rerank(request.question(), candidates, queryProperties.topK());
+        log.info("Nach Rerank: {} Dokumente", reranked.size());
+        return reranked;
     }
 
     private String buildContext(List<Document> relevantDocs) {

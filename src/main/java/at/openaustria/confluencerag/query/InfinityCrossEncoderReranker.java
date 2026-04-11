@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -16,20 +17,23 @@ import java.util.List;
  * Cross-encoder reranker that calls an external infinity container
  * (BAAI/bge-reranker-v2-m3) to re-score vector search candidates.
  *
- * Falls back to the original candidate order on any HTTP error or when
- * disabled via configuration, so failures never break the query path.
+ * Activated via {@code query.reranker.type=infinity}. Requires the
+ * infinity container (~4.5 GB) to be running and reachable. Falls back
+ * to the original candidate order on any HTTP error so failures never
+ * break the query path.
  */
 @Service
-public class RerankerService {
+@ConditionalOnProperty(prefix = "query.reranker", name = "type", havingValue = "infinity")
+public class InfinityCrossEncoderReranker implements Reranker {
 
-    private static final Logger log = LoggerFactory.getLogger(RerankerService.class);
+    private static final Logger log = LoggerFactory.getLogger(InfinityCrossEncoderReranker.class);
 
-    private final QueryProperties.RerankerProperties config;
+    private final QueryProperties.InfinityRerankerProperties config;
     private final RestClient restClient;
 
     @Autowired
-    public RerankerService(QueryProperties queryProperties) {
-        this.config = queryProperties.reranker();
+    public InfinityCrossEncoderReranker(QueryProperties queryProperties) {
+        this.config = queryProperties.reranker().infinity();
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
@@ -40,27 +44,23 @@ public class RerankerService {
                 .requestFactory(requestFactory)
                 .build();
 
-        log.info("RerankerService konfiguriert: enabled={}, baseUrl={}, model={}, candidateCount={}",
-                config.enabled(), config.baseUrl(), config.model(), config.candidateCount());
+        log.info("InfinityCrossEncoderReranker konfiguriert: baseUrl={}, model={}, candidateCount={}",
+                config.baseUrl(), config.model(), config.candidateCount());
     }
 
     /**
      * Package-private constructor for tests — allows injecting a RestClient
      * pointed at a test HTTP server.
      */
-    RerankerService(QueryProperties queryProperties, RestClient restClient) {
-        this.config = queryProperties.reranker();
+    InfinityCrossEncoderReranker(QueryProperties queryProperties, RestClient restClient) {
+        this.config = queryProperties.reranker().infinity();
         this.restClient = restClient;
     }
 
-    /**
-     * Re-ranks the candidates by querying the external reranker service.
-     * Returns up to {@code topK} documents in the new order. Falls back
-     * to the first {@code topK} original candidates on any error.
-     */
+    @Override
     public List<Document> rerank(String query, List<Document> candidates, int topK) {
-        if (!config.enabled() || candidates.isEmpty()) {
-            return candidates.stream().limit(topK).toList();
+        if (candidates.isEmpty()) {
+            return List.of();
         }
 
         try {
@@ -92,6 +92,7 @@ public class RerankerService {
         }
     }
 
+    @Override
     public int candidateCount() {
         return config.candidateCount();
     }

@@ -9,7 +9,20 @@ public record QueryProperties(
     RerankerProperties reranker
 ) {
     public record RerankerProperties(
-        boolean enabled,
+        String type,                              // llm | infinity | none
+        LlmRerankerProperties llm,
+        InfinityRerankerProperties infinity
+    ) {}
+
+    public record LlmRerankerProperties(
+        String baseUrl,
+        String model,
+        int candidateCount,
+        int timeoutSeconds,
+        int maxChunkChars
+    ) {}
+
+    public record InfinityRerankerProperties(
         String baseUrl,
         String model,
         int candidateCount,
