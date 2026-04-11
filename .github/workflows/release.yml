@@ -10,17 +10,18 @@ permissions:
 
 jobs:
   release:
-    # Pin to 22.04 — the current ubuntu-latest (24.04) JDK tool-cache is broken
-    # (Error loading java.security file) across temurin and zulu distributions
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
+        # Using 21 instead of 17 — the 17.0.18-8 build currently resolved
+        # by setup-java is broken ('Error loading java.security file').
+        # pom.xml still targets Java 17 bytecode via maven-compiler.
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Build Fat JAR
