@@ -10,19 +10,26 @@ permissions:
 
 jobs:
   release:
-    # Build happens inside a Maven+Temurin container to bypass the
-    # broken JDK tool-cache on the current hosted runners.
     runs-on: ubuntu-latest
-    container:
-      image: maven:3.9-eclipse-temurin-17
+    # actions/setup-java hits a broken JDK tool-cache on current runners
+    # ("Error loading java.security file"). We install JDK + Maven via
+    # apt directly and unset any Java env vars the runner may set that
+    # would interfere with JVM startup.
+    env:
+      JAVA_TOOL_OPTIONS: ''
+      _JAVA_OPTIONS: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install zip (for assemble.sh windows archive)
+      - name: Install JDK 17, Maven, zip
         run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends zip
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            openjdk-17-jdk-headless maven zip
+          unset JAVA_HOME
+          java -version
+          mvn -version
 
       - name: Build Fat JAR
         run: mvn -B package -DskipTests
