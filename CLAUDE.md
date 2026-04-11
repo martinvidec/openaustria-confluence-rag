@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 
 mvn clean compile                                    # Compile
-mvn test                                             # Run all tests (43 tests)
+mvn test                                             # Run all tests (67 tests)
 mvn spring-boot:run -DskipTests                      # Start app (requires Qdrant + Ollama)
 mvn test -pl . -Dtest=ConfluenceClientTest            # Run single test class
 mvn test -pl . -Dtest=ConfluenceHtmlConverterTest     # Run converter tests
@@ -65,6 +65,28 @@ Single Spring Boot 3.4.3 application with Spring AI 1.0.0. Three logical layers:
 - `ConfluenceVersion.by` is a nested `ConfluenceUser` object (not a String) — use `getAuthorName()` helper
 - Auth supports both PAT (`Authorization: Bearer`) and Basic Auth (`username:password`) — configured via `ConfluenceProperties`
 - Configuration via `ConfluenceProperties` record (`@ConfigurationProperties(prefix = "confluence")`)
+- **Never create `.mvn/jvm.config`** — it is picked up by every `mvn` invocation including CI. An early version of this repo had one with a hardcoded macOS `-Djava.home=/opt/homebrew/opt/openjdk@17/...` that silently broke every Linux build with cryptic `Error loading java.security file` errors (fixed in da8de1b). Local dev on macOS uses `JAVA_HOME` env var; no `.mvn/` config needed.
+
+## Release Process
+
+Releases are cut by pushing a `v*` git tag. The `.github/workflows/release.yml` workflow then builds the fat JAR, runs `packaging/assemble.sh` to produce `confluence-rag-<version>-unix.tar.gz` and `-windows.zip`, and creates a GitHub Release with both artifacts. The public install scripts (`install.sh` / `install.ps1`) find the latest release via the GitHub API.
+
+```bash
+# 1. Set release version in pom.xml
+mvn versions:set -DnewVersion=0.2.0 -DgenerateBackupPoms=false
+git commit -am "release: v0.2.0"
+
+# 2. Tag and push — this triggers the release workflow
+git tag v0.2.0
+git push origin main v0.2.0
+
+# 3. After release, bump back to next SNAPSHOT
+mvn versions:set -DnewVersion=0.3.0-SNAPSHOT -DgenerateBackupPoms=false
+git commit -am "chore: Bump version to 0.3.0-SNAPSHOT"
+git push origin main
+```
+
+If CI is still failing before the workflow reaches `Build Fat JAR`, the tag can be safely force-moved (`git tag -d v0.X.Y && git push origin :refs/tags/v0.X.Y && git tag v0.X.Y && git push origin v0.X.Y`) as long as the release has not been published yet. Once a release is public, don't move the tag — cut a patch release instead.
 
 ## Diagnostic Scripts
 
