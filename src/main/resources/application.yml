@@ -31,11 +31,18 @@ query:
   top-k: ${QUERY_TOP_K:5}
   similarity-threshold: ${QUERY_SIMILARITY_THRESHOLD:0.45}
   reranker:
-    enabled: ${QUERY_RERANKER_ENABLED:true}
-    base-url: ${QUERY_RERANKER_URL:http://localhost:7997}
-    model: ${QUERY_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
-    candidate-count: ${QUERY_RERANKER_CANDIDATES:30}
-    timeout-seconds: ${QUERY_RERANKER_TIMEOUT:10}
+    type: ${QUERY_RERANKER_TYPE:llm}              # llm | infinity | none
+    llm:
+      base-url: ${QUERY_RERANKER_LLM_URL:http://localhost:11434}
+      model: ${QUERY_RERANKER_LLM_MODEL:qwen3:0.6b}
+      candidate-count: ${QUERY_RERANKER_LLM_CANDIDATES:15}
+      timeout-seconds: ${QUERY_RERANKER_LLM_TIMEOUT:60}
+      max-chunk-chars: ${QUERY_RERANKER_LLM_MAX_CHUNK:500}
+    infinity:
+      base-url: ${QUERY_RERANKER_INFINITY_URL:http://localhost:7997}
+      model: ${QUERY_RERANKER_INFINITY_MODEL:BAAI/bge-reranker-v2-m3}
+      candidate-count: ${QUERY_RERANKER_INFINITY_CANDIDATES:30}
+      timeout-seconds: ${QUERY_RERANKER_INFINITY_TIMEOUT:10}
 
 confluence:
   base-url: ${CONFLUENCE_BASE_URL:http://localhost:8090}
